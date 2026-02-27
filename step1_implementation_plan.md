@@ -590,11 +590,12 @@ ConvertBody(PK_BODY_t)
 ```cpp
 class PKToXchgConverter {
 private:
-    // 实体映射表（用于 Edge/Vertex 去重共享）
-    std::unordered_map<PK_ENTITY_t, Xchg_EdgePtr> pk_edge_map_;
-    std::unordered_map<PK_ENTITY_t, Xchg_VertexPtr> pk_vertex_map_;
-    std::unordered_map<PK_ENTITY_t, Xchg_SurfacePtr> pk_surface_map_;
-    std::unordered_map<PK_ENTITY_t, Xchg_CurvePtr> pk_curve_map_;
+    // 实体映射表（用于 Face/Edge/Vertex 去重共享）
+    std::unordered_map<PK_ENTITY_t, Xchg_FacePtr> pk_face_map_;       // Face 被 2 个 Shell 共享
+    std::unordered_map<PK_ENTITY_t, Xchg_EdgePtr> pk_edge_map_;       // Edge 被多个 Coedge 共享
+    std::unordered_map<PK_ENTITY_t, Xchg_VertexPtr> pk_vertex_map_;   // Vertex 被多个 Edge 共享
+    std::unordered_map<PK_ENTITY_t, Xchg_SurfacePtr> pk_surface_map_; // Surface 几何去重
+    std::unordered_map<PK_ENTITY_t, Xchg_CurvePtr> pk_curve_map_;     // Curve 几何去重
 
     Xchg_BodyPtr current_body_;
 
