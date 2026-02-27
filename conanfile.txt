@@ -1,8 +1,10 @@
 [requires]
 amcax-exchange-base/0.0.1.121
 pskernel/36.0
+gtest/1.14.0
 
 [options]
+gtest/*:shared=False
 amcax-exchange-base/*:customer=PK
 
 [generators]
