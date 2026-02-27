@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(AMCAXExchangeBase REQUIRED)
 find_package(pskernel REQUIRED)
+find_package(AMXT_STP REQUIRED)
 
 add_executable(PKToSTEP
     src/main.cpp
@@ -19,4 +20,5 @@ target_include_directories(PKToSTEP PRIVATE
 target_link_libraries(PKToSTEP PRIVATE
     AMCAXExchangeBase::AMCAXExchangeBase
     pskernel::pskernel
+    AMXT_STP::AMXT_STP
 )
