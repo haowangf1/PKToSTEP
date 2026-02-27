@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/depend/AMCAXExchangeBase_AMX_latest/include",
+                "C:/Users/adminstrator/.conan2/p/psker7f7426e452be7/p/include",
+                "C:/Users/adminstrator/.conan2/p/amcax724d8e7c73c89/p/include",
+                "C:/Users/adminstrator/.conan2/p/amcax01d02fb16add4/p/include"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "WIN32"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}
