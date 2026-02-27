@@ -177,6 +177,8 @@ Xchg_Body                        (最高级，Create()创建)
 
 **Fin 级别：**
 - `PK_FIN_ask_edge(fin, &edge)` → 获取 fin 对应的 edge
+- `PK_FIN_is_positive(fin, &is_positive)` → **判断 fin 是否与 edge 同向**（推荐用于计算 Coedge orientation）
+- `PK_FIN_ask_curve(fin, &curve)` → 获取 fin 级别的 curve（tolerant edge 的 SP-curve）
 - `PK_FIN_ask_oriented_curve(fin, &curve, &orientation)` → 获取 fin 的 curve 及方向
   - `PK_LOGICAL_true`：fin 方向平行于 curve 切线
   - `PK_LOGICAL_false`：fin 方向反平行于 curve 切线
@@ -444,10 +446,13 @@ Xchg_Body                        (最高级，Create()创建)
    注意: 不要用 PK_FIN_ask_oriented_curve + PK_EDGE_ask_oriented_curve 比较的方式，
          因为 tolerant edge/fin 可能没有 curve（返回 null），此时 orientation 不确定
 
-4. （可选）设置 UV 曲线:
-   - 对于 tolerant edge，fin 上可能有 SP-curve
-   - PK_FIN_ask_curve(pk_fin, &fin_curve) → 如果不为 null，转换后设置
-   - xchg_coedge->SetGeom(uv_curve)
+4. 设置 UV 曲线（不可省略，tolerant edge 的几何依赖于此）:
+   - PK_FIN_ask_curve(pk_fin, &fin_curve) → 获取 fin 级别的 curve
+   - 如果 fin_curve != PK_ENTITY_null:
+     → 转换 fin_curve → xchg_uv_curve
+     → xchg_coedge->SetGeom(xchg_uv_curve)
+   - 对于 tolerant edge（edge 无 3D curve），fin 上的 SP-curve 是该边在对应 face 上的
+     唯一几何表达，丢弃会导致几何信息不完整
 
 注意: Fin 在 Loop 中的顺序 = Coedge 在 Loop 中的添加顺序
       Fin 是 nose-to-tail 排列，保证了 Loop 的闭合性
@@ -664,13 +669,17 @@ private:
 - `Xchg_Shell::AddFace(face, orientation)` 中的 orientation:
   "XCHG_TRUE if face material and shell material are on same side"
 
-**转换策略：**
+**转换策略（无损）：**
 - 如果 PK 中 `face_orient == PK_LOGICAL_true`（face normal == surface normal）:
   → 直接使用 surface，无需翻转
 - 如果 PK 中 `face_orient == PK_LOGICAL_false`（face normal != surface normal）:
-  → 需要翻转 surface normal（使用 `PK_BODY_reverse_orientation` 或在 ExchangeBase 端处理）
-  → 或使用 `Xchg_Face::ReverseNormal()`
-- Shell 中 face 的 orientation 直接传递 `PK_SHELL_ask_oriented_faces` 的结果
+  → 需要创建反向 surface 或使用 `Xchg_Face::ReverseNormal()`
+  → **不能简单跳过或忽略此标志**，否则法向信息丢失
+- Shell 中 face 的 orientation **不能直接传递** `PK_SHELL_ask_oriented_faces` 的结果
+  → 因为 PK 和 ExchangeBase 的 orientation 语义不同
+  → PK: "face normal 是否指向 shell 内部"
+  → ExchangeBase: "face material 和 shell material 是否在同侧"
+  → 正确映射: `xchg_shell_orient = (pk_shell_orient == pk_face_orient)`
 
 **Edge/Fin 方向规则（PK）：**
 - Loop 方向：面在 loop 的左侧（从面法线上方往下看，沿 loop 前进方向）
@@ -681,8 +690,11 @@ private:
 
 **Coedge Orientation 计算：**
 - Coedge orientation = fin 方向是否与 edge 方向一致
-- 如果 fin_orient == edge_orient → same sense → XCHG_TRUE
-- 如果 fin_orient != edge_orient → opposite sense → XCHG_FALSE
+- **推荐使用 `PK_FIN_is_positive()`**，直接返回 fin 是否与 edge 同向
+  → is_positive == true → XCHG_TRUE
+  → is_positive == false → XCHG_FALSE
+- **不推荐** 使用 `PK_FIN_ask_oriented_curve()` 与 `PK_EDGE_ask_oriented_curve()` 比较
+  → 因为 tolerant edge/fin 可能没有 curve，此时 orientation 返回值不确定
 
 #### 5.2 退化情况
 
@@ -694,7 +706,9 @@ private:
 - **Vertex loop**：PK_LOOP_type_vertex_c，loop 只有一个 vertex 无 edge
   → `Xchg_Face::AddVertexLoop(vertex)` 或 `Xchg_Loop::SetVertexLoop(vertex)`
 - **无 surface 的 face**：`PK_FACE_ask_surf()` 可能返回 PK_ENTITY_null
-  → 跳过几何设置，仅处理拓扑
+  → **不跳过 face 本身**，创建 Xchg_Face 并处理完整拓扑（loop/coedge/edge/vertex）
+  → 仅跳过 `SetGeom()` 调用（无几何可设置）
+  → 这种 face 仍然携带拓扑信息，丢弃则破坏完整性
 
 #### 5.3 容差处理
 
@@ -729,13 +743,14 @@ private:
   } while(0)
   ```
 
-#### 5.6 特殊 Body 类型处理
+#### 5.6 特殊 Body 类型处理（所有类型都完整转换，不跳过任何 region）
 
-- **Solid Body**: 最常见，Region → Lump，需要正确区分 outer/inner shell
-- **Sheet Body**: 所有 shell 在 void region 中，使用 AddOpenShell()
-- **Wire Body**: 只有 edge，无 face，使用 AddWireShell()
-- **Acorn Body**: 只有 vertex，无 edge/face，使用 AddWire(vertex)
-- **General Body**: 可能混合以上类型，需要逐 shell 判断类型
+- **Solid Body**: 所有 region → Lump。solid region 的 shell → outer shell；bounded void region 的 shell → inner shell；infinite void region 的 shell 也转换（与 solid 的 outer shell 引用相同 face，orientation 相反）
+- **Sheet Body**: void region 包含 sheet shell → Lump + AddOpenShell()。如果 sheet 闭合，可能有 bounded void region 也需转换
+- **Wire Body**: void region 包含 wireframe shell → Lump + AddWireShell()
+- **Acorn Body**: void region 包含 acorn shell → Lump + AddWireShell(vertex)
+- **General Body**: 可能混合以上类型，遍历所有 region 和 shell，逐 shell 根据 `PK_SHELL_ask_type()` 判断类型选择对应 Add 方法
+- **Empty Body**: 仅有无穷 void region 且无 shell → 创建空 Lump
 
 ### 6. 测试策略
 
