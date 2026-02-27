@@ -1,0 +1,3 @@
+1.利用pk 接口把所有的pkbody取出所有的topo和几何，把topo和几何转换到AMCAXExchangeBase定义的中间数据格式
+2.把MCAXExchangeBase定义的中间数据格式写出成step文件
+3.将pk转换到AXExchangeBase后，可以再用AXExchangeBase的接口转会pk body以检查正确性
