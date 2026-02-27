@@ -1,0 +1,30 @@
+#ifndef __XCHG_DEFINE_HPP__
+#define __XCHG_DEFINE_HPP__
+#include "limits.h"
+
+#define XCHG_TOLERANCE    0.00000001
+#define XCHG_PI           3.1415926535897932384626433832795
+#define XCHG_DEFAULT_TOLERANCE 0.00000001
+#define XCHG_INFINITY     std::numeric_limits<double>::infinity()
+#define XCHG_PARAM_TOLERANCE 1.0e-10
+#define XCHG_ANGLE_TOLERANCE 1.0e-11
+
+#define AMCAX_EXCHANGE_NAMESPACE AMCAX::Exchange
+#define AMCAX_EXCHANGE_NAMESPACE_BEGIN \
+    namespace AMCAX_EXCHANGE_NAMESPACE \
+    {
+
+#define AMCAX_EXCHANGE_NAMESPACE_END \
+    }                       \
+    ;
+
+#define XCHG_DEFAULT_LINEAR_DEFLECTION (0.1)
+#define XCHG_MAX_LINEAR_DEFLECTION (1)
+#define XCHG_MIN_LINEAR_DEFLECTION (0.001)
+
+
+#define XCHG_DEFAULT_ANGLE_DEFLECTION (0.1)
+#define XCHG_MAX_ANGLE_DEFLECTION (1)
+#define XCHG_MIN_ANGLE_DEFLECTION (0.001)
+
+#endif

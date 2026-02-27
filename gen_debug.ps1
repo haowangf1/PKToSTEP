@@ -1,0 +1,1 @@
+conan install -u amcax-exchange-base . -of=build/Debug -pr:b=profile-debug --build=missing -s build_type=Debug

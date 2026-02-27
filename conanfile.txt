@@ -1,0 +1,10 @@
+[requires]
+amcax-exchange-base/0.0.1.121
+pskernel/36.0
+
+[options]
+amcax-exchange-base/*:customer=PK
+
+[generators]
+CMakeDeps
+CMakeToolchain
