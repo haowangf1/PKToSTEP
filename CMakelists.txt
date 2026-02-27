@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.15)
+project(PKToSTEP LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(AMCAXExchangeBase REQUIRED)
+find_package(pskernel REQUIRED)
+
+add_executable(PKToSTEP
+    src/main.cpp
+    src/pk_to_xchg_converter.cpp
+)
+
+target_include_directories(PKToSTEP PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(PKToSTEP PRIVATE
+    AMCAXExchangeBase::AMCAXExchangeBase
+    pskernel::pskernel
+)
