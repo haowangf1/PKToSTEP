@@ -52,7 +52,7 @@ Xchg_Body                        (最高级，Create()创建)
 | PK 实体 | PK 父子关系 | Xchg 实体 | Xchg 父子关系 | 映射说明 |
 |---------|------------|----------|-------------|---------|
 | PK_BODY | 包含 >=1 个 PK_REGION | Xchg_Body | 包含 >=1 个 Xchg_Lump | Body 1:1 映射 |
-| PK_REGION | 属于 Body，包含 >=1 个 Shell | Xchg_Lump | 属于 Body，包含 Shell | Region → Lump，**跳过无穷void region** |
+| PK_REGION | 属于 Body，包含 >=1 个 Shell | Xchg_Lump | 属于 Body，包含 Shell | **所有 Region → Lump**，包括 void region |
 | PK_SHELL | 属于 Region，包含 Face+orientation | Xchg_Shell | 属于 Lump，包含 Face+orientation | Shell 1:1 映射，需设置 outer/inner/open |
 | PK_FACE | 属于 Shell(可属于2个)，包含 Loop | Xchg_Face | 属于 Shell，包含 Loop | Face 1:1 映射 |
 | PK_LOOP | 属于 Face，包含有序 Fin | Xchg_Loop | 属于 Face，包含有序 Coedge | Loop 1:1 映射 |
@@ -63,12 +63,15 @@ Xchg_Body                        (最高级，Create()创建)
 ##### 1.3.2 关键差异与处理策略
 
 **差异1：PK_REGION vs Xchg_Lump**
-- PK_BODY 总有一个**无穷void region**（第一个）。ExchangeBase 的 Xchg_Lump 没有这个概念。
-- **策略**：遍历 `PK_BODY_ask_regions()` 返回的 regions，跳过无穷void region。
-  - 使用 `PK_REGION_ask_type()` 或 `PK_REGION_is_solid()` 判断
-  - 对于 Solid body：只处理 solid region（每个solid region → 一个 Xchg_Lump）
-  - 对于 Sheet body：void region 的 shell 中包含 sheet face（需特殊处理）
-  - 对于 Wire body：void region 的 shell 中包含 wireframe edge
+- Xchg_Lump 文档明确说："aligning with Parasolid Region"，即与 PK_REGION 对齐。
+- PK_BODY 总有一个**无穷 void region**（regions[0]）。
+- **策略（无损转换）**：遍历 `PK_BODY_ask_regions()` 返回的**所有** regions，每个 region → 一个 Xchg_Lump。
+  - 使用 `PK_REGION_is_solid()` 判断 region 类型
+  - **所有 region 都要转换**，不跳过任何 region
+  - Solid body：solid region → Lump（其 shell 作为 outer shell）；bounded void region → Lump（其 shell 作为 inner shell）；infinite void region → Lump（其 shell 是 solid 外边界的反向视角）
+  - Sheet body：void region 包含 sheet shell → Lump + AddOpenShell
+  - Wire body：void region 包含 wireframe shell → Lump + AddWireShell
+  - 注意：PK 中每个 face 属于 2 个 shell（来自 face 两侧的 region），面对象需 map 去重，同一个 Xchg_Face 可能被两个 Xchg_Shell 引用
 
 **差异2：PK_SHELL 类型 vs Xchg_Shell 添加方式**
 - PK 中 Shell 属于 Region，通过 `PK_SHELL_ask_type()` 获取类型：
@@ -81,10 +84,17 @@ Xchg_Body                        (最高级，Create()创建)
   - `Xchg_Lump::AddInnerShell()` → 内壳（solid body中的空腔）
   - `Xchg_Lump::AddOpenShell()` → 开放壳（sheet body）
   - `Xchg_Lump::AddWireShell()` → 线框壳（wire body）
-- **策略**：
-  - Solid body：solid region 的 shell → outer shell；void region 内部的 shell → inner shell
-  - Sheet body：`AddOpenShell()` 或根据 `Xchg_Shell::CheckIfClosed()` 判断
-  - Wire body：`AddWireShell()`
+- **策略（按 region 类型+shell 类型综合判断）**：
+  - Solid region 的 shell：
+    - 该 shell 是 solid region 的边界 → `lump->AddOuterShell(shell)`
+  - Bounded void region 的 shell：
+    - 该 shell 是空腔的边界 → `lump->AddInnerShell(shell)`
+  - Infinite void region 的 shell（含 face 的）：
+    - Solid body 中：该 shell 是 solid 外边界从 void 侧看 → `lump->AddOuterShell(shell)`
+      （与 solid region 的 outer shell 引用相同 face，但 orientation 相反）
+    - Sheet body 中：该 shell 包含 sheet face → `lump->AddOpenShell(shell)`
+  - Wireframe shell：`lump->AddWireShell(shell)`
+  - Acorn shell：`lump->AddWireShell(shell)`（只含 vertex）
 
 **差异3：PK_FIN vs Xchg_Coedge**
 - PK 中 **Fin** 是 Edge 在 Loop 中的有向使用，连接 Loop 和 Edge。
@@ -107,19 +117,30 @@ Xchg_Body                        (最高级，Create()创建)
   - 转换 Fin→Coedge 时，先查 map 中 edge 是否已转换
   - Vertex 同理，确保共享的 vertex 只创建一次
 
-**差异5：Face 方向 (orientation)**
-- PK 中通过 `PK_SHELL_ask_oriented_faces()` 获取 face 在 shell 中的 orientation
-  - `PK_LOGICAL_true`：face normal 指向 shell 内部
-  - `PK_LOGICAL_false`：face normal 指向 shell 外部
-- PK 中通过 `PK_FACE_ask_oriented_surf()` 获取 face 相对于 surface 的 orientation
-  - `PK_LOGICAL_true`：face normal 平行于 surface normal
-  - `PK_LOGICAL_false`：face normal 反平行于 surface normal
-- ExchangeBase 中：
-  - `Xchg_Shell::AddFace(face, orientation)` 的 orientation 表示 face 在 shell 中的朝向
-  - Xchg_Face 注释说 "Geometrical orientation relative to basis surface is always True"
-- **策略**：
-  - Shell 中的 face orientation：直接使用 `PK_SHELL_ask_oriented_faces()` 返回的 orientation
-  - Face 与 Surface 的关系：如果 PK 中 face orientation 为 false（反平行），需要在设置 surface 时翻转法向或调整
+**差异5：Face 方向 (orientation) — 需要精确映射**
+- PK 有两个独立的 orientation：
+  1. **Shell-Face orientation**：`PK_SHELL_ask_oriented_faces()` 返回
+     - `PK_LOGICAL_true`：face normal 指向 shell 内部（shell 所属 region 方向）
+     - `PK_LOGICAL_false`：face normal 指向 shell 外部
+  2. **Face-Surface orientation**：`PK_FACE_ask_oriented_surf()` 返回
+     - `PK_LOGICAL_true`：face normal 平行于 surface natural normal
+     - `PK_LOGICAL_false`：face normal 反平行于 surface natural normal
+- ExchangeBase 约定：
+  - `Xchg_Face`："Geometrical orientation relative to basis surface is **always True**"
+    → 即 Xchg_Face normal **始终等于** basis surface normal
+  - `Xchg_Shell::AddFace(face, orientation)`："XCHG_TRUE if face material and shell material are on same side"
+- **策略（无损映射，不丢弃任何 orientation 信息）**：
+  - **Face-Surface orientation 的处理**：
+    - PK `face_orient == true` → face normal = surface normal → 直接使用 surface，无需处理
+    - PK `face_orient == false` → face normal = -surface normal → 由于 ExchangeBase 要求 face normal = surface normal，**需要反转 surface**（翻转法向/反转参数化）然后设置到 Xchg_Face
+    - 反转 surface 后，face normal 方向不变，但 surface normal 方向翻转为与 face normal 一致
+  - **Shell-Face orientation 的映射**：
+    - PK shell_orient 描述的是 face normal 与 shell 内部的关系
+    - ExchangeBase shell_orient 描述的是 material side 的关系
+    - 由于反转 surface 改变了 Xchg_Face normal 的含义（现在 = 原 surface normal 的反向 = 原 face normal），shell-face orientation 需要综合 PK 的 shell_orient 和 face_orient 来计算：
+      `xchg_shell_orient = (pk_shell_orient == pk_face_orient)`
+    - 即：如果 PK 中 shell_orient 和 face_orient 同号 → XCHG_TRUE，异号 → XCHG_FALSE
+  - **Face 去重**：同一个 PK_FACE 在两个 shell 中出现（face 两侧的 region），需用 map 去重，确保只创建一个 Xchg_Face，但在两个 Xchg_Shell 中以不同 orientation 引用
 
 #### 1.4 关键 Parasolid API 函数（详细）
 
@@ -201,6 +222,7 @@ Xchg_Body                        (最高级，Create()创建)
 | PK_CURVE_line_c | Xchg_Line | 提取起点+方向 |
 | PK_CURVE_circle_c | Xchg_Ellipse (圆形) | 提取中心+半径+法向 |
 | PK_CURVE_ellipse_c | Xchg_Ellipse | 提取中心+长短轴 |
+
 | PK_CURVE_bcurve_c | Xchg_NurbsCurve | 提取控制点+节点+权重+阶数 |
 | PK_CURVE_conic_c | Xchg_Conic/Hyperbola/Parabola | 根据类型转换 |
 | PK_CURVE_offset_c | Xchg_OffsetCurve | 提取基础曲线+偏移 |
@@ -243,35 +265,57 @@ Xchg_Body                        (最高级，Create()创建)
 4. xchg_body->SetBodyType(mapped_type)
 ```
 
-##### 2.2 Region → Lump 转换
+##### 2.2 Region → Lump 转换（无损：所有 region 都转换）
 ```
 输入: PK_BODY_t pk_body, Xchg_BodyPtr xchg_body
 步骤:
 1. PK_BODY_ask_regions(pk_body, &n_regions, &regions)
    → regions[0] 总是无穷 void region
+   → 所有 region 都需要转换，不跳过任何一个
 
-2. 根据 body 类型选择策略:
+2. 遍历所有 regions[0..n_regions-1]:
+   对每个 region:
+     a. PK_REGION_is_solid(region, &is_solid) → 判断 solid/void
+     b. Xchg_Lump::Create(xchg_body) → 创建 Lump
+     c. xchg_body->AddLump(lump)
+     d. PK_REGION_ask_shells(region, &n_shells, &shells)
+     e. 遍历 shells:
+        - PK_SHELL_ask_type(shell, &shell_type) → 获取 shell 类型
+        - ConvertShell(shell) → xchg_shell
+        - 根据 region 类型 + shell 类型决定添加方式:
 
-   ═══ Solid Body ═══
-   遍历 regions[1..n-1]（跳过无穷void region）:
-     a. PK_REGION_ask_type() → 判断是 solid 还是 void
-     b. 只处理 solid region
-     c. Xchg_Lump::Create(xchg_body) → 创建 Lump
-     d. xchg_body->AddLump(lump)
-     e. PK_REGION_ask_shells(region, &n_shells, &shells)
-     f. 遍历 shells → ConvertShell()
-        - 如果 shell 的 face normal 朝内 → lump->AddOuterShell(shell)
-        - solid body 中 void region 的 shell → 该 solid region 的 lump->AddInnerShell(shell)
+3. Shell 添加方式判断:
 
-   ═══ Sheet Body ═══
-   a. 从 void region (regions[0]) 获取 shells
-   b. PK_REGION_ask_shells(regions[0], &n_shells, &shells)
-   c. 每个 shell → Xchg_Lump::Create(xchg_body) + lump->AddOpenShell(shell)
-      或使用 xchg_body->AddOpenShell(shell) (自动创建 lump)
+   ═══ Solid Region 的 Shell ═══
+   - 该 shell 是 solid region 的边界
+   - lump->AddOuterShell(xchg_shell)
 
-   ═══ Wire Body ═══
-   a. 从 void region (regions[0]) 获取 shells
-   b. 每个 shell → lump->AddWireShell(shell)
+   ═══ Bounded Void Region 的 Shell（空腔）═══
+   - 该 shell 是空腔的边界
+   - lump->AddInnerShell(xchg_shell)
+
+   ═══ Infinite Void Region 的 Shell ═══
+   根据 shell 类型:
+   - wireframe_free/mixed (含 face):
+     - Solid body 中: lump->AddOuterShell(xchg_shell)
+       → 这些 face 与 solid region shell 的 face 是同一批（PK 中每个 face 属于 2 个 shell）
+       → 用 face map 去重，确保同一 PK_FACE 只创建一个 Xchg_Face
+     - Sheet body 中: lump->AddOpenShell(xchg_shell)
+   - wireframe (只有 edge): lump->AddWireShell(xchg_shell)
+   - acorn (只有 vertex): lump->AddWireShell(xchg_shell)
+
+   ═══ Acorn Body ═══
+   - 只有 void region，shell 中只有 vertex
+   - lump->AddWireShell(xchg_shell)
+
+   ═══ General Body ═══
+   - 可能混合多种 shell 类型
+   - 逐 shell 根据 PK_SHELL_ask_type() 判断并选择对应的 Add 方法
+
+注意：Face 去重至关重要
+- 在 PK 中，每个 face 被 2 个 shell 引用（face 两侧的 2 个 region 各有一个 shell）
+- 转换时需用 pk_face_map_ 确保同一 PK_FACE 只创建一个 Xchg_Face
+- 同一 Xchg_Face 被两个 Xchg_Shell 以不同 orientation 引用
 ```
 
 ##### 2.3 Shell 转换
@@ -287,9 +331,16 @@ Xchg_Body                        (最高级，Create()创建)
    ═══ wireframe_free (有 face 无 wireframe edge) 或 mixed ═══
    a. PK_SHELL_ask_oriented_faces(pk_shell, &n_faces, &faces, &orients)
    b. 遍历 faces:
-      - ConvertFace(faces[i]) → xchg_face
-      - xchg_shell->AddFace(xchg_face, orients[i] ? XCHG_TRUE : XCHG_FALSE)
-        （orients[i]=true → face normal 指向 shell 内部）
+      - ConvertFace(faces[i]) → xchg_face（从 map 去重，同一 PK_FACE 只创建一次）
+      - 计算 ExchangeBase shell-face orientation:
+        PK_FACE_ask_oriented_surf(faces[i], &surf, &face_orient)
+        xchg_orient = (orients[i] == face_orient) ? XCHG_TRUE : XCHG_FALSE
+      - xchg_shell->AddFace(xchg_face, xchg_orient)
+
+   ═══ mixed shell 额外处理 ═══
+   a. PK_SHELL_ask_wireframe_edges(pk_shell, ...) → 获取 wireframe edge
+   b. 转换 edge → Xchg_Edge（查 map 去重）
+   c. xchg_shell->AddWire(edges)
 
    ═══ wireframe (有 edge 无 face) ═══
    a. PK_SHELL_ask_wireframe_edges(pk_shell, ...) → 获取 wireframe edge
@@ -306,23 +357,32 @@ Xchg_Body                        (最高级，Create()创建)
    - xchg_shell->SetOuterInfo(...)
 ```
 
-##### 2.4 Face 转换
+##### 2.4 Face 转换（带去重）
 ```
 输入: PK_FACE_t pk_face, Xchg_BodyPtr xchg_body
 输出: Xchg_FacePtr xchg_face
 
 步骤:
+0. 检查 pk_face_map_：如果已转换则直接返回（Face 被 2 个 Shell 共享）
+
 1. Xchg_Face::Create(xchg_body) → 创建 Face
 2. 获取并设置几何曲面:
    a. PK_FACE_ask_oriented_surf(pk_face, &pk_surf, &surf_orient)
-   b. ConvertSurface(pk_surf) → xchg_surface
-   c. 如果 surf_orient == PK_LOGICAL_false:
-      → ExchangeBase 要求 "Geometrical orientation relative to basis surface is always True"
-      → 需要翻转 surface normal 或在 surface 上做处理
-   d. xchg_face->SetGeom(xchg_surface)
+   b. 如果 pk_surf == PK_ENTITY_null → 无几何（仍创建拓扑 Face，不跳过）
+   c. 如果 pk_surf != PK_ENTITY_null:
+      - 如果 surf_orient == PK_LOGICAL_true:
+        → ConvertSurface(pk_surf) → xchg_surface（正向，直接使用）
+      - 如果 surf_orient == PK_LOGICAL_false:
+        → ConvertSurface(pk_surf) → xchg_surface
+        → 需要创建反向 surface（翻转法向/反转参数化）
+        → 注意：反向 surface 不能与正向共享 map 缓存，需单独存储
+        → 或使用 Xchg_Face::ReverseNormal() 如果 ExchangeBase 支持
+      - xchg_face->SetGeom(xchg_surface)
+
 3. 获取并转换 loops:
    a. PK_FACE_ask_loops(pk_face, &n_loops, &loops)
-   b. 遍历 loops:
+   b. 如果 n_loops == 0 → 完整封闭面（如完整球面），仍然合法
+   c. 遍历 loops:
       - PK_LOOP_ask_type(loops[i], &loop_type) → 获取 loop 类型
       - ConvertLoop(loops[i]) → xchg_loop
       - 根据 loop_type 添加到 face:
@@ -330,6 +390,9 @@ Xchg_Body                        (最高级，Create()创建)
         PK_LOOP_type_inner_c / likely_inner_c / inner_sing_c → xchg_face->AddInnerLoop(xchg_loop)
         PK_LOOP_type_vertex_c → xchg_face->AddVertexLoop(vertex)
         PK_LOOP_type_winding_c → 需要判断是外环还是内环（通常成对出现）
+        PK_LOOP_type_wire_c → 线框环，作为 inner loop 或单独处理
+
+4. 存入 map: pk_face_map_[pk_face] = xchg_face
 ```
 
 ##### 2.5 Loop 转换
@@ -374,11 +437,12 @@ Xchg_Body                        (最高级，Create()创建)
    d. xchg_edge->AddCoedge(xchg_coedge)  // 建立反向引用
 
 3. 设置 coedge 的 orientation (coedge 方向与 edge 方向的关系):
-   a. PK_FIN_ask_oriented_curve(pk_fin, &fin_curve, &fin_orient)
-   b. PK_EDGE_ask_oriented_curve(pk_edge, &edge_curve, &edge_orient)
-   c. 如果 fin_orient == edge_orient → same sense → xchg_coedge->SetOrientation(XCHG_TRUE)
-      如果 fin_orient != edge_orient → opposite → xchg_coedge->SetOrientation(XCHG_FALSE)
-   d. 或直接使用: 如果 fin 的 sense 为 positive → XCHG_TRUE，否则 XCHG_FALSE
+   → 使用 PK_FIN_is_positive()，这是最直接且可靠的方式
+   a. PK_FIN_is_positive(pk_fin, &is_positive)
+   b. is_positive == true → fin 与 edge 同向 → xchg_coedge->SetOrientation(XCHG_TRUE)
+      is_positive == false → fin 与 edge 反向 → xchg_coedge->SetOrientation(XCHG_FALSE)
+   注意: 不要用 PK_FIN_ask_oriented_curve + PK_EDGE_ask_oriented_curve 比较的方式，
+         因为 tolerant edge/fin 可能没有 curve（返回 null），此时 orientation 不确定
 
 4. （可选）设置 UV 曲线:
    - 对于 tolerant edge，fin 上可能有 SP-curve
@@ -410,17 +474,31 @@ Xchg_Body                        (最高级，Create()创建)
 
 4. 获取并设置几何曲线:
    a. PK_EDGE_ask_curve(pk_edge, &pk_curve) → 可能为 null（tolerant edge）
-   b. 如果不为 null:
+   b. 如果 pk_curve != PK_ENTITY_null:
       ConvertCurve(pk_curve) → xchg_curve
       xchg_edge->SetGeom(xchg_curve)
+   c. 如果 pk_curve == PK_ENTITY_null:
+      → tolerant edge，曲线几何在 fin 上（SP-curve），此处 edge 无 3D curve
+      → 仍然创建 edge（不跳过），在 ConvertFin 中通过 PK_FIN_ask_curve 获取 fin 级别的曲线
+      → 标记: xchg_edge->SetDegenerated(XCHG_TRUE) 如果是退化边
 
 5. 设置 edge 方向 (same_sense):
-   a. PK_EDGE_ask_oriented_curve(pk_edge, &curve, &orient)
-   b. xchg_edge->SetSameSense(orient ? XCHG_TRUE : XCHG_FALSE)
-      （ExchangeBase 注释: "Geometrical orientation relative to 3D Curve is always True"
-        但 SetSameSense 存在，按需设置）
+   a. 如果有 curve:
+      PK_EDGE_ask_oriented_curve(pk_edge, &curve, &orient)
+      xchg_edge->SetSameSense(orient ? XCHG_TRUE : XCHG_FALSE)
+   b. 如果无 curve (tolerant edge):
+      xchg_edge->SetSameSense(XCHG_TRUE) → 默认值
+      （方向信息将通过 Coedge 的 orientation 来间接保留）
 
-6. 存入 map: pk_to_xchg_map_[pk_edge] = xchg_edge
+6. 检查是否为退化边:
+   a. 如果 pk_curve == PK_ENTITY_null 或 vertices[0] == vertices[1]（两 vertex 重合）:
+      xchg_edge->SetDegenerated(XCHG_TRUE)
+
+7. 获取容差:
+   a. PK_EDGE_ask_precision(pk_edge, &precision) → 如果有 local precision
+   b. xchg_edge->SetTolerance(precision)
+
+8. 存入 map: pk_edge_map_[pk_edge] = xchg_edge
 ```
 
 ##### 2.8 Vertex 转换
@@ -430,22 +508,28 @@ Xchg_Body                        (最高级，Create()创建)
 
 步骤:
 1. 检查 map：如果已转换则直接返回（Vertex 可能被多个 Edge 共享）
-2. Xchg_Vertex::Create(xchg_body) → 创建 Vertex
+2. Xchg_Vertex::Create(xchg_body) → 创建 Vertex（无论有无 point 几何都要创建）
 3. PK_VERTEX_ask_point(pk_vertex, &pk_point) → 获取 point
 4. 如果 pk_point != PK_ENTITY_null:
    a. PK_POINT_ask(pk_point, &position) → 获取坐标 (x, y, z)
    b. 创建 Xchg_Point(position.coord[0], position.coord[1], position.coord[2])
    c. xchg_vertex->SetGeom(xchg_point)
-5. 存入 map: pk_to_xchg_map_[pk_vertex] = xchg_vertex
+5. 如果 pk_point == PK_ENTITY_null:
+   → 仍然保留 vertex（不跳过），只是没有几何信息
+   → 这种情况少见但合法（如 tolerant vertex）
+6. 获取容差:
+   a. PK_VERTEX_ask_precision(pk_vertex, &precision) → 如果有 local precision
+   b. xchg_vertex->SetTolerance(precision)
+7. 存入 map: pk_vertex_map_[pk_vertex] = xchg_vertex
 ```
 
 ##### 2.9 转换流程总结（调用顺序）
 ```
 ConvertBody(PK_BODY_t)
   ├─ PK_BODY_ask_type() → SetBodyType()
-  ├─ PK_BODY_ask_regions() → 遍历
-  │   ├─ [跳过 void region 或根据 body type 处理]
-  │   ├─ Xchg_Lump::Create()
+  ├─ PK_BODY_ask_regions() → 遍历所有 region（包括 void region）
+  │   ├─ PK_REGION_is_solid() → 判断 solid/void
+  │   ├─ Xchg_Lump::Create() → 每个 region 创建一个 Lump
   │   ├─ PK_REGION_ask_shells() → 遍历
   │   │   ├─ ConvertShell()
   │   │   │   ├─ PK_SHELL_ask_oriented_faces() → 遍历
