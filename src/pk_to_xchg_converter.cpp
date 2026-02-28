@@ -392,12 +392,10 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertLoop(PK_LOOP_t pk_loop, Xchg_Loop
         if (!xchg_coedge)
             continue;
 
-        PK_LOGICAL_t is_positive = PK_LOGICAL_true;
-        rc = PKErr(PK_FIN_is_positive(fins[i], &is_positive), "PK_FIN_is_positive");
-        if (rc != STEP_OK)
-            return rc;
-
-        xchg_loop->AddCoedge(xchg_coedge, is_positive ? XCHG_TRUE : XCHG_FALSE);
+        // AddCoedge 第二个参数: coedge 在 loop 中的方向是否与 loop 一致。
+        // PK 中 fin 按 nose-to-tail 排列，fin 方向就是 loop 方向，所以总是 XCHG_TRUE。
+        // coedge 与 edge 的方向关系已在 ConvertFin 中通过 SetOrientation 设置。
+        xchg_loop->AddCoedge(xchg_coedge, XCHG_TRUE);
     }
 
     *loop = xchg_loop;
