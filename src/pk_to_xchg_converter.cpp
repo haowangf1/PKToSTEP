@@ -81,35 +81,31 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BOD
         return rc;
     PKMemGuard regions_guard(regions);
 
+    // PK 保证 regions[0] 一定是 infinite void region。
     // Xchg (STEP/BREP) 中不需要单独表示 void region。
-    // Xchg→PK 转换时会自动根据 outer shell 推导 infinite void region，
-    // 根据 inner shell 推导 bounded void region。
-    // 因此：
-    //   Solid body: 只转换 solid region 的 shell → outer shell；
-    //               bounded void region 的 shell → inner shell；
-    //               跳过 infinite void region。
-    //   Sheet/Wire/Acorn body: 只有 infinite void region 包含拓扑，
-    //               其 shell 作为 open/wire shell。
+    // Solid body: 从 solid region 取 shell → outer shell；
+    //             bounded void region (cavity) 的 shell → inner shell；
+    //             跳过 infinite void region（regions[0]）。
+    // Sheet/Wire/Acorn body: 只有 infinite void region (regions[0]) 包含拓扑，
+    //             其 shell 作为 open/wire shell。
 
     Xchg_LumpPtr lump = Xchg_Lump::Create(current_body_);
     current_body_->AddLump(lump);
 
     for (int ri = 0; ri < n_regions; ++ri) {
         PK_REGION_t region = regions[ri];
+        bool is_infinite_void = (ri == 0);
 
         PK_LOGICAL_t is_solid = PK_LOGICAL_false;
         rc = PKErr(PK_REGION_is_solid(region, &is_solid), "PK_REGION_is_solid");
         if (rc != STEP_OK)
             return rc;
 
-        bool is_infinite_void = (ri == 0 && is_solid == PK_LOGICAL_false);
-
-        // Solid body: 跳过 solid region（从 void region 的视角取 shell，
-        // 因为 STEP/BREP 约定 outer shell 的 face 法线指向外部）；
-        // 但保留 bounded void region 用于 inner shell（空腔）。
-        if (body_type == PK_BODY_type_solid_c && is_solid == PK_LOGICAL_true)
+        // Solid body: 跳过 infinite void region，从 solid region 取 shell 作为 outer shell
+        if (body_type == PK_BODY_type_solid_c && is_infinite_void)
             continue;
 
+        // Non-solid body: 只处理 infinite void region
         if ((body_type == PK_BODY_type_sheet_c ||
              body_type == PK_BODY_type_wire_c ||
              body_type == PK_BODY_type_acorn_c ||
@@ -163,12 +159,12 @@ void PKToXchgConverter::AddShellToLump(
     }
 
     // Bounded void region (cavity) → inner shell
-    if (!is_infinite_void) {
+    if (!is_infinite_void && !is_solid_region) {
         lump->AddInnerShell(shell);
         return;
     }
 
-    // Infinite void region
+    // Infinite void region or solid body context
     switch (body_type) {
     case PK_BODY_type_solid_c:
         lump->AddOuterShell(shell);
@@ -202,8 +198,7 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertShell(PK_SHELL_t pk_shell, Xchg_S
 
     Xchg_ShellPtr xchg_shell = Xchg_Shell::Create(current_body_);
 
-    if (shell_type == PK_SHELL_type_wireframe_free_c ||
-        shell_type == PK_SHELL_type_mixed_c) {
+    if (shell_type != PK_SHELL_type_wireframe_c) {
         int n_faces = 0;
         PK_FACE_t* faces = nullptr;
         PK_LOGICAL_t* orients = nullptr;

@@ -10,7 +10,7 @@
 #### 1.1 Parasolid 拓扑层次结构
 ```
 PK_BODY                          (最高级拓扑实体)
-  └─ PK_REGION                   (>=1, 第一个总是无穷void region)
+  └─ PK_REGION                   (>=1, PK保证regions[0]一定是infinite void region)
       └─ PK_SHELL                (>=1, 连通的有向face集合)
           ├─ PK_FACE             (>=0, 面 + orientation标志)
           │   └─ PK_LOOP         (>=0, face的边界，0个loop=封闭面如完整球面)
@@ -63,7 +63,7 @@ Xchg_Body                        (最高级，Create()创建)
 ##### 1.3.2 关键差异与处理策略
 
 **差异1：PK_REGION vs Xchg_Lump**
-- PK_BODY 总有一个**无穷 void region**（regions[0]），以及若干 solid/bounded void region。
+- PK_BODY 总有一个**无穷 void region**。**PK 保证 `PK_BODY_ask_regions` 返回的第一个 region（`regions[0]`）一定是 infinite void region**，后续 region 为 solid 或 bounded void region。
 - Xchg (STEP/BREP) 中**不需要单独表示 void region**。Xchg→PK 转换时，PK 会自动根据 outer shell 推导 infinite void region（outer shell 的 face 反面即为 void region 的 shell），根据 inner shell 推导 bounded void region。
 - **策略**：一个 Body 只创建**一个 Xchg_Lump**，通过 shell 的 outer/inner 属性来表达拓扑关系：
   - Solid body：跳过 infinite void region；solid region 的 shell → `AddOuterShell`；bounded void region（空腔）的 shell → `AddInnerShell`
@@ -142,7 +142,7 @@ Xchg_Body                        (最高级，Create()创建)
 
 **Body 级别：**
 - `PK_BODY_ask_type(body, &body_type)` → 获取 body 类型 (solid/sheet/wire/acorn/empty/general)
-- `PK_BODY_ask_regions(body, &n_regions, &regions)` → 获取所有 region（第一个是无穷void region）
+- `PK_BODY_ask_regions(body, &n_regions, &regions)` → 获取所有 region（**PK 保证 regions[0] 一定是 infinite void region**）
 - `PK_BODY_ask_topology(body, options, &n_topols, &topols, &classes, &n_relations, &parents, &children, &senses)` → 一次性获取完整拓扑（可选方案）
 
 **Region 级别：**
