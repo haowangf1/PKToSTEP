@@ -11,15 +11,14 @@ void PKToXchgConverter::Log(const std::string& msg)
         log_callback_(msg);
 }
 
-bool PKToXchgConverter::PKCheck(PK_ERROR_code_t err, const char* context)
+STEPExport_ErrorCode PKToXchgConverter::PKErr(PK_ERROR_code_t err, const char* context)
 {
-    if (err != PK_ERROR_no_errors) {
-        char buf[256];
-        snprintf(buf, sizeof(buf), "PK error %d at %s", static_cast<int>(err), context);
-        Log(buf);
-        return true;
-    }
-    return false;
+    if (err == PK_ERROR_no_errors)
+        return STEP_OK;
+    char buf[256];
+    snprintf(buf, sizeof(buf), "PK error %d at %s", static_cast<int>(err), context);
+    Log(buf);
+    return STEP_ERR_KERNEL;
 }
 
 void PKToXchgConverter::ClearMaps()
@@ -36,13 +35,15 @@ void PKToXchgConverter::ClearMaps()
 // Body
 // ---------------------------------------------------------------------------
 
-Xchg_BodyPtr PKToXchgConverter::Convert(PK_BODY_t pk_body)
+STEPExport_ErrorCode PKToXchgConverter::Convert(PK_BODY_t pk_body, Xchg_BodyPtr* body)
 {
     ClearMaps();
+    *body = nullptr;
 
     PK_BODY_type_t body_type = PK_BODY_type_solid_c;
-    if (PKCheck(PK_BODY_ask_type(pk_body, &body_type), "PK_BODY_ask_type"))
-        return nullptr;
+    STEPExport_ErrorCode rc = PKErr(PK_BODY_ask_type(pk_body, &body_type), "PK_BODY_ask_type");
+    if (rc != STEP_OK)
+        return rc;
 
     current_body_ = Xchg_Body::Create();
 
@@ -59,29 +60,34 @@ Xchg_BodyPtr PKToXchgConverter::Convert(PK_BODY_t pk_body)
     }
     current_body_->SetBodyType(xchg_type);
 
-    ConvertRegions(pk_body, body_type);
+    rc = ConvertRegions(pk_body, body_type);
+    if (rc != STEP_OK)
+        return rc;
 
-    return current_body_;
+    *body = current_body_;
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Region -> Lump (all regions, no skipping)
 // ---------------------------------------------------------------------------
 
-void PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BODY_type_t body_type)
+STEPExport_ErrorCode PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BODY_type_t body_type)
 {
     int n_regions = 0;
     PK_REGION_t* regions = nullptr;
-    if (PKCheck(PK_BODY_ask_regions(pk_body, &n_regions, &regions), "PK_BODY_ask_regions"))
-        return;
+    STEPExport_ErrorCode rc = PKErr(PK_BODY_ask_regions(pk_body, &n_regions, &regions), "PK_BODY_ask_regions");
+    if (rc != STEP_OK)
+        return rc;
     PKMemGuard regions_guard(regions);
 
     for (int ri = 0; ri < n_regions; ++ri) {
         PK_REGION_t region = regions[ri];
 
         PK_LOGICAL_t is_solid = PK_LOGICAL_false;
-        if (PKCheck(PK_REGION_is_solid(region, &is_solid), "PK_REGION_is_solid"))
-            continue;
+        rc = PKErr(PK_REGION_is_solid(region, &is_solid), "PK_REGION_is_solid");
+        if (rc != STEP_OK)
+            return rc;
 
         bool is_infinite_void = (ri == 0 && is_solid == PK_LOGICAL_false);
 
@@ -90,15 +96,22 @@ void PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BODY_type_t body_ty
 
         int n_shells = 0;
         PK_SHELL_t* shells = nullptr;
-        if (PKCheck(PK_REGION_ask_shells(region, &n_shells, &shells), "PK_REGION_ask_shells"))
-            continue;
+        rc = PKErr(PK_REGION_ask_shells(region, &n_shells, &shells), "PK_REGION_ask_shells");
+        if (rc != STEP_OK)
+            return rc;
         PKMemGuard shells_guard(shells);
 
         for (int si = 0; si < n_shells; ++si) {
             PK_SHELL_type_t shell_type = PK_SHELL_type_wireframe_free_c;
-            PK_SHELL_ask_type(shells[si], &shell_type);
+            rc = PKErr(PK_SHELL_ask_type(shells[si], &shell_type), "PK_SHELL_ask_type");
+            if (rc != STEP_OK)
+                return rc;
 
-            Xchg_ShellPtr xchg_shell = ConvertShell(shells[si]);
+            Xchg_ShellPtr xchg_shell;
+            rc = ConvertShell(shells[si], &xchg_shell);
+            if (rc != STEP_OK)
+                return rc;
+
             if (!xchg_shell)
                 continue;
 
@@ -108,6 +121,8 @@ void PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BODY_type_t body_ty
                            body_type, shell_type);
         }
     }
+
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
@@ -149,7 +164,6 @@ void PKToXchgConverter::AddShellToLump(
             break;
         }
     } else {
-        // bounded void region (cavity)
         lump->AddInnerShell(shell);
     }
 }
@@ -158,10 +172,14 @@ void PKToXchgConverter::AddShellToLump(
 // Shell
 // ---------------------------------------------------------------------------
 
-Xchg_ShellPtr PKToXchgConverter::ConvertShell(PK_SHELL_t pk_shell)
+STEPExport_ErrorCode PKToXchgConverter::ConvertShell(PK_SHELL_t pk_shell, Xchg_ShellPtr* shell)
 {
+    *shell = nullptr;
+
     PK_SHELL_type_t shell_type = PK_SHELL_type_wireframe_free_c;
-    PK_SHELL_ask_type(pk_shell, &shell_type);
+    STEPExport_ErrorCode rc = PKErr(PK_SHELL_ask_type(pk_shell, &shell_type), "PK_SHELL_ask_type");
+    if (rc != STEP_OK)
+        return rc;
 
     Xchg_ShellPtr xchg_shell = Xchg_Shell::Create(current_body_);
 
@@ -170,22 +188,29 @@ Xchg_ShellPtr PKToXchgConverter::ConvertShell(PK_SHELL_t pk_shell)
         int n_faces = 0;
         PK_FACE_t* faces = nullptr;
         PK_LOGICAL_t* orients = nullptr;
-        if (PKCheck(PK_SHELL_ask_oriented_faces(pk_shell, &n_faces, &faces, &orients),
-                    "PK_SHELL_ask_oriented_faces"))
-            return xchg_shell;
+        rc = PKErr(PK_SHELL_ask_oriented_faces(pk_shell, &n_faces, &faces, &orients),
+                   "PK_SHELL_ask_oriented_faces");
+        if (rc != STEP_OK)
+            return rc;
         PKMemGuard faces_guard(faces);
         PKMemGuard orients_guard(orients);
 
         for (int i = 0; i < n_faces; ++i) {
-            Xchg_FacePtr xchg_face = ConvertFace(faces[i]);
+            Xchg_FacePtr xchg_face;
+            rc = ConvertFace(faces[i], &xchg_face);
+            if (rc != STEP_OK)
+                return rc;
+
             if (!xchg_face)
                 continue;
 
             PK_SURF_t surf = PK_ENTITY_null;
             PK_LOGICAL_t face_orient = PK_LOGICAL_true;
-            PK_FACE_ask_oriented_surf(faces[i], &surf, &face_orient);
+            rc = PKErr(PK_FACE_ask_oriented_surf(faces[i], &surf, &face_orient),
+                       "PK_FACE_ask_oriented_surf");
+            if (rc != STEP_OK)
+                return rc;
 
-            // xchg_shell_orient = (pk_shell_orient == pk_face_orient)
             bool same = (orients[i] == face_orient);
             xchg_shell->AddFace(xchg_face, same ? XCHG_TRUE : XCHG_FALSE);
         }
@@ -195,12 +220,18 @@ Xchg_ShellPtr PKToXchgConverter::ConvertShell(PK_SHELL_t pk_shell)
         shell_type == PK_SHELL_type_mixed_c) {
         int n_edges = 0;
         PK_EDGE_t* edges = nullptr;
-        PK_SHELL_ask_wireframe_edges(pk_shell, &n_edges, &edges);
+        rc = PKErr(PK_SHELL_ask_wireframe_edges(pk_shell, &n_edges, &edges),
+                   "PK_SHELL_ask_wireframe_edges");
+        if (rc != STEP_OK)
+            return rc;
         PKMemGuard edges_guard(edges);
 
         Xchg_vector<Xchg_EdgePtr> xchg_edges;
         for (int i = 0; i < n_edges; ++i) {
-            Xchg_EdgePtr e = ConvertEdge(edges[i]);
+            Xchg_EdgePtr e;
+            rc = ConvertEdge(edges[i], &e);
+            if (rc != STEP_OK)
+                return rc;
             if (e)
                 xchg_edges.push_back(e);
         }
@@ -210,9 +241,14 @@ Xchg_ShellPtr PKToXchgConverter::ConvertShell(PK_SHELL_t pk_shell)
 
     if (shell_type == PK_SHELL_type_acorn_c) {
         PK_VERTEX_t vtx = PK_ENTITY_null;
-        PK_SHELL_ask_acorn_vertex(pk_shell, &vtx);
+        rc = PKErr(PK_SHELL_ask_acorn_vertex(pk_shell, &vtx), "PK_SHELL_ask_acorn_vertex");
+        if (rc != STEP_OK)
+            return rc;
         if (vtx != PK_ENTITY_null) {
-            Xchg_VertexPtr xv = ConvertVertex(vtx);
+            Xchg_VertexPtr xv;
+            rc = ConvertVertex(vtx, &xv);
+            if (rc != STEP_OK)
+                return rc;
             if (xv) {
                 Xchg_vector<Xchg_VertexPtr> verts;
                 verts.push_back(xv);
@@ -224,101 +260,117 @@ Xchg_ShellPtr PKToXchgConverter::ConvertShell(PK_SHELL_t pk_shell)
     Xchg_bool is_closed = xchg_shell->CheckIfClosed();
     xchg_shell->SetClosedInfo(is_closed);
 
-    return xchg_shell;
+    *shell = xchg_shell;
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Face (with dedup)
 // ---------------------------------------------------------------------------
 
-Xchg_FacePtr PKToXchgConverter::ConvertFace(PK_FACE_t pk_face)
+STEPExport_ErrorCode PKToXchgConverter::ConvertFace(PK_FACE_t pk_face, Xchg_FacePtr* face)
 {
+    *face = nullptr;
+
     auto it = pk_face_map_.find(pk_face);
-    if (it != pk_face_map_.end())
-        return it->second;
+    if (it != pk_face_map_.end()) {
+        *face = it->second;
+        return STEP_OK;
+    }
 
     Xchg_FacePtr xchg_face = Xchg_Face::Create(current_body_);
 
     PK_SURF_t pk_surf = PK_ENTITY_null;
     PK_LOGICAL_t surf_orient = PK_LOGICAL_true;
-    PK_FACE_ask_oriented_surf(pk_face, &pk_surf, &surf_orient);
+    STEPExport_ErrorCode rc = PKErr(PK_FACE_ask_oriented_surf(pk_face, &pk_surf, &surf_orient),
+                              "PK_FACE_ask_oriented_surf");
+    if (rc != STEP_OK)
+        return rc;
 
     if (pk_surf != PK_ENTITY_null) {
-        Xchg_SurfacePtr xchg_surface = ConvertSurface(pk_surf);
+        Xchg_SurfacePtr xchg_surface;
+        rc = ConvertSurface(pk_surf, &xchg_surface);
+        if (rc != STEP_OK)
+            return rc;
         if (xchg_surface) {
             xchg_face->SetGeom(xchg_surface);
             if (surf_orient == PK_LOGICAL_false) {
                 // TODO: reverse the surface parameterization or use ReverseNormal
-                // For now we set the surface as-is; orientation is captured in shell-face orient
             }
         }
     }
 
     int n_loops = 0;
     PK_LOOP_t* loops = nullptr;
-    if (!PKCheck(PK_FACE_ask_loops(pk_face, &n_loops, &loops), "PK_FACE_ask_loops")) {
-        PKMemGuard loops_guard(loops);
+    rc = PKErr(PK_FACE_ask_loops(pk_face, &n_loops, &loops), "PK_FACE_ask_loops");
+    if (rc != STEP_OK)
+        return rc;
+    PKMemGuard loops_guard(loops);
 
-        for (int i = 0; i < n_loops; ++i) {
-            PK_LOOP_type_t loop_type = PK_LOOP_type_outer_c;
-            PK_LOOP_ask_type(loops[i], &loop_type);
+    for (int i = 0; i < n_loops; ++i) {
+        PK_LOOP_type_t loop_type = PK_LOOP_type_outer_c;
+        rc = PKErr(PK_LOOP_ask_type(loops[i], &loop_type), "PK_LOOP_ask_type");
+        if (rc != STEP_OK)
+            return rc;
 
-            if (loop_type == PK_LOOP_type_vertex_c) {
-                // vertex loop: get the vertex directly
-                int n_fins = 0;
-                PK_FIN_t* fins = nullptr;
-                PK_LOOP_ask_fins(loops[i], &n_fins, &fins);
-                PKMemGuard fins_guard(fins);
-                // vertex loop has no fins; get vertex via loop's vertices
-                // PK doesn't have PK_LOOP_ask_vertices, use topology traversal
-                // For now create an empty loop and mark it as vertex
-                Xchg_LoopPtr xchg_loop = ConvertLoop(loops[i]);
-                if (xchg_loop)
-                    xchg_face->AddLoop(xchg_loop, XCHG_FALSE);
-                continue;
-            }
-
-            Xchg_LoopPtr xchg_loop = ConvertLoop(loops[i]);
-            if (!xchg_loop)
-                continue;
-
-            switch (loop_type) {
-            case PK_LOOP_type_outer_c:
-            case PK_LOOP_type_likely_outer_c:
-                xchg_face->AddOuterLoop(xchg_loop);
-                break;
-            case PK_LOOP_type_inner_c:
-            case PK_LOOP_type_likely_inner_c:
-            case PK_LOOP_type_inner_sing_c:
-                xchg_face->AddInnerLoop(xchg_loop);
-                break;
-            case PK_LOOP_type_winding_c:
+        if (loop_type == PK_LOOP_type_vertex_c) {
+            Xchg_LoopPtr xchg_loop;
+            rc = ConvertLoop(loops[i], &xchg_loop);
+            if (rc != STEP_OK)
+                return rc;
+            if (xchg_loop)
                 xchg_face->AddLoop(xchg_loop, XCHG_FALSE);
-                break;
-            case PK_LOOP_type_wire_c:
-                xchg_face->AddInnerLoop(xchg_loop);
-                break;
-            default:
-                xchg_face->AddLoop(xchg_loop, XCHG_FALSE);
-                break;
-            }
+            continue;
+        }
+
+        Xchg_LoopPtr xchg_loop;
+        rc = ConvertLoop(loops[i], &xchg_loop);
+        if (rc != STEP_OK)
+            return rc;
+        if (!xchg_loop)
+            continue;
+
+        switch (loop_type) {
+        case PK_LOOP_type_outer_c:
+        case PK_LOOP_type_likely_outer_c:
+            xchg_face->AddOuterLoop(xchg_loop);
+            break;
+        case PK_LOOP_type_inner_c:
+        case PK_LOOP_type_likely_inner_c:
+        case PK_LOOP_type_inner_sing_c:
+            xchg_face->AddInnerLoop(xchg_loop);
+            break;
+        case PK_LOOP_type_winding_c:
+            xchg_face->AddLoop(xchg_loop, XCHG_FALSE);
+            break;
+        case PK_LOOP_type_wire_c:
+            xchg_face->AddInnerLoop(xchg_loop);
+            break;
+        default:
+            xchg_face->AddLoop(xchg_loop, XCHG_FALSE);
+            break;
         }
     }
 
     pk_face_map_[pk_face] = xchg_face;
-    return xchg_face;
+    *face = xchg_face;
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Loop
 // ---------------------------------------------------------------------------
 
-Xchg_LoopPtr PKToXchgConverter::ConvertLoop(PK_LOOP_t pk_loop)
+STEPExport_ErrorCode PKToXchgConverter::ConvertLoop(PK_LOOP_t pk_loop, Xchg_LoopPtr* loop)
 {
+    *loop = nullptr;
+
     Xchg_LoopPtr xchg_loop = Xchg_Loop::Create(current_body_);
 
     PK_LOOP_type_t loop_type = PK_LOOP_type_outer_c;
-    PK_LOOP_ask_type(pk_loop, &loop_type);
+    STEPExport_ErrorCode rc = PKErr(PK_LOOP_ask_type(pk_loop, &loop_type), "PK_LOOP_ask_type");
+    if (rc != STEP_OK)
+        return rc;
 
     bool is_outer = (loop_type == PK_LOOP_type_outer_c ||
                      loop_type == PK_LOOP_type_likely_outer_c);
@@ -327,94 +379,136 @@ Xchg_LoopPtr PKToXchgConverter::ConvertLoop(PK_LOOP_t pk_loop)
 
     int n_fins = 0;
     PK_FIN_t* fins = nullptr;
-    if (PKCheck(PK_LOOP_ask_fins(pk_loop, &n_fins, &fins), "PK_LOOP_ask_fins"))
-        return xchg_loop;
+    rc = PKErr(PK_LOOP_ask_fins(pk_loop, &n_fins, &fins), "PK_LOOP_ask_fins");
+    if (rc != STEP_OK)
+        return rc;
     PKMemGuard fins_guard(fins);
 
     for (int i = 0; i < n_fins; ++i) {
-        Xchg_CoedgePtr xchg_coedge = ConvertFin(fins[i]);
+        Xchg_CoedgePtr xchg_coedge;
+        rc = ConvertFin(fins[i], &xchg_coedge);
+        if (rc != STEP_OK)
+            return rc;
         if (!xchg_coedge)
             continue;
 
         PK_LOGICAL_t is_positive = PK_LOGICAL_true;
-        PK_FIN_is_positive(fins[i], &is_positive);
+        rc = PKErr(PK_FIN_is_positive(fins[i], &is_positive), "PK_FIN_is_positive");
+        if (rc != STEP_OK)
+            return rc;
 
         xchg_loop->AddCoedge(xchg_coedge, is_positive ? XCHG_TRUE : XCHG_FALSE);
     }
 
-    return xchg_loop;
+    *loop = xchg_loop;
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Fin -> Coedge
 // ---------------------------------------------------------------------------
 
-Xchg_CoedgePtr PKToXchgConverter::ConvertFin(PK_FIN_t pk_fin)
+STEPExport_ErrorCode PKToXchgConverter::ConvertFin(PK_FIN_t pk_fin, Xchg_CoedgePtr* coedge)
 {
+    *coedge = nullptr;
+
     Xchg_CoedgePtr xchg_coedge = Xchg_Coedge::Create(current_body_);
 
     PK_EDGE_t pk_edge = PK_ENTITY_null;
-    if (PKCheck(PK_FIN_ask_edge(pk_fin, &pk_edge), "PK_FIN_ask_edge"))
-        return xchg_coedge;
+    STEPExport_ErrorCode rc = PKErr(PK_FIN_ask_edge(pk_fin, &pk_edge), "PK_FIN_ask_edge");
+    if (rc != STEP_OK)
+        return rc;
 
-    Xchg_EdgePtr xchg_edge = ConvertEdge(pk_edge);
+    Xchg_EdgePtr xchg_edge;
+    rc = ConvertEdge(pk_edge, &xchg_edge);
+    if (rc != STEP_OK)
+        return rc;
+
     if (xchg_edge) {
         xchg_coedge->SetEdge(xchg_edge);
         xchg_edge->AddCoedge(xchg_coedge);
     }
 
     PK_LOGICAL_t is_positive = PK_LOGICAL_true;
-    PK_FIN_is_positive(pk_fin, &is_positive);
+    rc = PKErr(PK_FIN_is_positive(pk_fin, &is_positive), "PK_FIN_is_positive");
+    if (rc != STEP_OK)
+        return rc;
     xchg_coedge->SetOrientation(is_positive ? XCHG_TRUE : XCHG_FALSE);
 
-    // SP-curve on fin (for tolerant edges)
     PK_CURVE_t fin_curve = PK_ENTITY_null;
     PK_LOGICAL_t fin_orient = PK_LOGICAL_true;
-    PK_FIN_ask_oriented_curve(pk_fin, &fin_curve, &fin_orient);
+    rc = PKErr(PK_FIN_ask_oriented_curve(pk_fin, &fin_curve, &fin_orient),
+               "PK_FIN_ask_oriented_curve");
+    if (rc != STEP_OK)
+        return rc;
     if (fin_curve != PK_ENTITY_null) {
-        Xchg_CurvePtr uv_curve = ConvertCurve(fin_curve);
+        Xchg_CurvePtr uv_curve;
+        rc = ConvertCurve(fin_curve, &uv_curve);
+        if (rc != STEP_OK)
+            return rc;
         if (uv_curve)
             xchg_coedge->SetGeom(uv_curve);
     }
 
-    return xchg_coedge;
+    *coedge = xchg_coedge;
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Edge (with dedup)
 // ---------------------------------------------------------------------------
 
-Xchg_EdgePtr PKToXchgConverter::ConvertEdge(PK_EDGE_t pk_edge)
+STEPExport_ErrorCode PKToXchgConverter::ConvertEdge(PK_EDGE_t pk_edge, Xchg_EdgePtr* edge)
 {
+    *edge = nullptr;
+
     auto it = pk_edge_map_.find(pk_edge);
-    if (it != pk_edge_map_.end())
-        return it->second;
+    if (it != pk_edge_map_.end()) {
+        *edge = it->second;
+        return STEP_OK;
+    }
 
     Xchg_EdgePtr xchg_edge = Xchg_Edge::Create(current_body_);
 
     PK_VERTEX_t vertices[2] = { PK_ENTITY_null, PK_ENTITY_null };
-    PK_EDGE_ask_vertices(pk_edge, vertices);
+    STEPExport_ErrorCode rc = PKErr(PK_EDGE_ask_vertices(pk_edge, vertices), "PK_EDGE_ask_vertices");
+    if (rc != STEP_OK)
+        return rc;
 
     if (vertices[0] != PK_ENTITY_null) {
-        Xchg_VertexPtr sv = ConvertVertex(vertices[0]);
+        Xchg_VertexPtr sv;
+        rc = ConvertVertex(vertices[0], &sv);
+        if (rc != STEP_OK)
+            return rc;
         if (sv) xchg_edge->SetStartVertex(sv);
     }
     if (vertices[1] != PK_ENTITY_null) {
-        Xchg_VertexPtr ev = ConvertVertex(vertices[1]);
+        Xchg_VertexPtr ev;
+        rc = ConvertVertex(vertices[1], &ev);
+        if (rc != STEP_OK)
+            return rc;
         if (ev) xchg_edge->SetEndVertex(ev);
     }
 
     PK_CURVE_t pk_curve = PK_ENTITY_null;
-    PK_EDGE_ask_curve(pk_edge, &pk_curve);
+    rc = PKErr(PK_EDGE_ask_curve(pk_edge, &pk_curve), "PK_EDGE_ask_curve");
+    if (rc != STEP_OK)
+        return rc;
 
     if (pk_curve != PK_ENTITY_null) {
-        Xchg_CurvePtr xchg_curve = ConvertCurve(pk_curve);
+        Xchg_CurvePtr xchg_curve;
+        rc = ConvertCurve(pk_curve, &xchg_curve);
+        if (rc != STEP_OK)
+            return rc;
         if (xchg_curve)
             xchg_edge->SetGeom(xchg_curve);
 
         PK_CURVE_t oriented_curve = PK_ENTITY_null;
         PK_LOGICAL_t orient = PK_LOGICAL_true;
-        PK_EDGE_ask_oriented_curve(pk_edge, &oriented_curve, &orient);
+        rc = PKErr(PK_EDGE_ask_oriented_curve(pk_edge, &oriented_curve, &orient),
+                   "PK_EDGE_ask_oriented_curve");
+        if (rc != STEP_OK)
+            return rc;
         xchg_edge->SetSameSense(orient ? XCHG_TRUE : XCHG_FALSE);
     } else {
         xchg_edge->SetSameSense(XCHG_TRUE);
@@ -426,204 +520,254 @@ Xchg_EdgePtr PKToXchgConverter::ConvertEdge(PK_EDGE_t pk_edge)
         xchg_edge->SetDegenerated(XCHG_TRUE);
 
     pk_edge_map_[pk_edge] = xchg_edge;
-    return xchg_edge;
+    *edge = xchg_edge;
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Vertex (with dedup)
 // ---------------------------------------------------------------------------
 
-Xchg_VertexPtr PKToXchgConverter::ConvertVertex(PK_VERTEX_t pk_vertex)
+STEPExport_ErrorCode PKToXchgConverter::ConvertVertex(PK_VERTEX_t pk_vertex, Xchg_VertexPtr* vertex)
 {
+    *vertex = nullptr;
+
     auto it = pk_vertex_map_.find(pk_vertex);
-    if (it != pk_vertex_map_.end())
-        return it->second;
+    if (it != pk_vertex_map_.end()) {
+        *vertex = it->second;
+        return STEP_OK;
+    }
 
     Xchg_VertexPtr xchg_vertex = Xchg_Vertex::Create(current_body_);
 
     PK_POINT_t pk_point = PK_ENTITY_null;
-    PK_VERTEX_ask_point(pk_vertex, &pk_point);
+    STEPExport_ErrorCode rc = PKErr(PK_VERTEX_ask_point(pk_vertex, &pk_point), "PK_VERTEX_ask_point");
+    if (rc != STEP_OK)
+        return rc;
 
     if (pk_point != PK_ENTITY_null) {
-        Xchg_PointPtr xchg_point = ConvertPoint(pk_point);
+        Xchg_PointPtr xchg_point;
+        rc = ConvertPoint(pk_point, &xchg_point);
+        if (rc != STEP_OK)
+            return rc;
         if (xchg_point)
             xchg_vertex->SetGeom(xchg_point);
     }
 
     pk_vertex_map_[pk_vertex] = xchg_vertex;
-    return xchg_vertex;
+    *vertex = xchg_vertex;
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Geometry: Point
 // ---------------------------------------------------------------------------
 
-Xchg_PointPtr PKToXchgConverter::ConvertPoint(PK_POINT_t pk_point)
+STEPExport_ErrorCode PKToXchgConverter::ConvertPoint(PK_POINT_t pk_point, Xchg_PointPtr* point)
 {
-    PK_POINT_sf_t point_sf;
-    if (PKCheck(PK_POINT_ask(pk_point, &point_sf), "PK_POINT_ask"))
-        return nullptr;
+    *point = nullptr;
 
-    return Xchg_Point::Create(
+    PK_POINT_sf_t point_sf;
+    STEPExport_ErrorCode rc = PKErr(PK_POINT_ask(pk_point, &point_sf), "PK_POINT_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    *point = Xchg_Point::Create(
         point_sf.position.coord[0],
         point_sf.position.coord[1],
         point_sf.position.coord[2]);
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Geometry: Surface dispatch
 // ---------------------------------------------------------------------------
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertSurface(PK_SURF_t pk_surf)
+STEPExport_ErrorCode PKToXchgConverter::ConvertSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
+    *surface = nullptr;
+
     auto it = pk_surface_map_.find(pk_surf);
-    if (it != pk_surface_map_.end())
-        return it->second;
+    if (it != pk_surface_map_.end()) {
+        *surface = it->second;
+        return STEP_OK;
+    }
 
     PK_CLASS_t surf_class = PK_CLASS_null;
-    PK_ENTITY_ask_class(pk_surf, &surf_class);
+    STEPExport_ErrorCode rc = PKErr(PK_ENTITY_ask_class(pk_surf, &surf_class), "PK_ENTITY_ask_class(surface)");
+    if (rc != STEP_OK)
+        return rc;
 
     Xchg_SurfacePtr result;
 
     if (surf_class == PK_CLASS_plane)
-        result = ConvertPlaneSurface(pk_surf);
+        rc = ConvertPlaneSurface(pk_surf, &result);
     else if (surf_class == PK_CLASS_cyl)
-        result = ConvertCylindricalSurface(pk_surf);
+        rc = ConvertCylindricalSurface(pk_surf, &result);
     else if (surf_class == PK_CLASS_cone)
-        result = ConvertConicalSurface(pk_surf);
+        rc = ConvertConicalSurface(pk_surf, &result);
     else if (surf_class == PK_CLASS_sphere)
-        result = ConvertSphericalSurface(pk_surf);
+        rc = ConvertSphericalSurface(pk_surf, &result);
     else if (surf_class == PK_CLASS_torus)
-        result = ConvertToroidalSurface(pk_surf);
+        rc = ConvertToroidalSurface(pk_surf, &result);
     else if (surf_class == PK_CLASS_bsurf)
-        result = ConvertNurbsSurface(pk_surf);
+        rc = ConvertNurbsSurface(pk_surf, &result);
     else if (surf_class == PK_CLASS_swept)
-        result = ConvertSweptSurface(pk_surf);
+        rc = ConvertSweptSurface(pk_surf, &result);
     else if (surf_class == PK_CLASS_spun)
-        result = ConvertSpunSurface(pk_surf);
+        rc = ConvertSpunSurface(pk_surf, &result);
     else if (surf_class == PK_CLASS_offset)
-        result = ConvertOffsetSurface(pk_surf);
+        rc = ConvertOffsetSurface(pk_surf, &result);
     else {
         Log("Unsupported surface class");
+        return STEP_OK;
     }
+
+    if (rc != STEP_OK)
+        return rc;
 
     if (result)
         pk_surface_map_[pk_surf] = result;
 
-    return result;
+    *surface = result;
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Geometry: Curve dispatch
 // ---------------------------------------------------------------------------
 
-Xchg_CurvePtr PKToXchgConverter::ConvertCurve(PK_CURVE_t pk_curve)
+STEPExport_ErrorCode PKToXchgConverter::ConvertCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve)
 {
+    *curve = nullptr;
+
     auto it = pk_curve_map_.find(pk_curve);
-    if (it != pk_curve_map_.end())
-        return it->second;
+    if (it != pk_curve_map_.end()) {
+        *curve = it->second;
+        return STEP_OK;
+    }
 
     PK_CLASS_t curve_class = PK_CLASS_null;
-    PK_ENTITY_ask_class(pk_curve, &curve_class);
+    STEPExport_ErrorCode rc = PKErr(PK_ENTITY_ask_class(pk_curve, &curve_class), "PK_ENTITY_ask_class(curve)");
+    if (rc != STEP_OK)
+        return rc;
 
     Xchg_CurvePtr result;
 
     if (curve_class == PK_CLASS_line)
-        result = ConvertLineCurve(pk_curve);
+        rc = ConvertLineCurve(pk_curve, &result);
     else if (curve_class == PK_CLASS_circle)
-        result = ConvertCircleCurve(pk_curve);
+        rc = ConvertCircleCurve(pk_curve, &result);
     else if (curve_class == PK_CLASS_ellipse)
-        result = ConvertEllipseCurve(pk_curve);
+        rc = ConvertEllipseCurve(pk_curve, &result);
     else if (curve_class == PK_CLASS_bcurve)
-        result = ConvertNurbsCurve(pk_curve);
+        rc = ConvertNurbsCurve(pk_curve, &result);
     else {
         Log("Unsupported curve class");
+        return STEP_OK;
     }
+
+    if (rc != STEP_OK)
+        return rc;
 
     if (result)
         pk_curve_map_[pk_curve] = result;
 
-    return result;
+    *curve = result;
+    return STEP_OK;
 }
 
 // ---------------------------------------------------------------------------
 // Geometry stubs (to be implemented)
 // ---------------------------------------------------------------------------
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertPlaneSurface(PK_SURF_t /*pk_surf*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertPlaneSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
 {
     // TODO: implement
-    return nullptr;
+    *surface = nullptr;
+    return STEP_OK;
 }
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertCylindricalSurface(PK_SURF_t /*pk_surf*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertCylindricalSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
 {
     // TODO: implement
-    return nullptr;
+    *surface = nullptr;
+    return STEP_OK;
 }
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertConicalSurface(PK_SURF_t /*pk_surf*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertConicalSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
 {
     // TODO: implement
-    return nullptr;
+    *surface = nullptr;
+    return STEP_OK;
 }
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertSphericalSurface(PK_SURF_t /*pk_surf*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertSphericalSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
 {
     // TODO: implement
-    return nullptr;
+    *surface = nullptr;
+    return STEP_OK;
 }
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertToroidalSurface(PK_SURF_t /*pk_surf*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertToroidalSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
 {
     // TODO: implement
-    return nullptr;
+    *surface = nullptr;
+    return STEP_OK;
 }
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertNurbsSurface(PK_SURF_t /*pk_surf*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertNurbsSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
 {
     // TODO: implement
-    return nullptr;
+    *surface = nullptr;
+    return STEP_OK;
 }
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertSweptSurface(PK_SURF_t /*pk_surf*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertSweptSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
 {
     // TODO: implement
-    return nullptr;
+    *surface = nullptr;
+    return STEP_OK;
 }
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertSpunSurface(PK_SURF_t /*pk_surf*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertSpunSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
 {
     // TODO: implement
-    return nullptr;
+    *surface = nullptr;
+    return STEP_OK;
 }
 
-Xchg_SurfacePtr PKToXchgConverter::ConvertOffsetSurface(PK_SURF_t /*pk_surf*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertOffsetSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
 {
     // TODO: implement
-    return nullptr;
+    *surface = nullptr;
+    return STEP_OK;
 }
 
-Xchg_CurvePtr PKToXchgConverter::ConvertLineCurve(PK_CURVE_t /*pk_curve*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertLineCurve(PK_CURVE_t /*pk_curve*/, Xchg_CurvePtr* curve)
 {
     // TODO: implement
-    return nullptr;
+    *curve = nullptr;
+    return STEP_OK;
 }
 
-Xchg_CurvePtr PKToXchgConverter::ConvertCircleCurve(PK_CURVE_t /*pk_curve*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertCircleCurve(PK_CURVE_t /*pk_curve*/, Xchg_CurvePtr* curve)
 {
     // TODO: implement
-    return nullptr;
+    *curve = nullptr;
+    return STEP_OK;
 }
 
-Xchg_CurvePtr PKToXchgConverter::ConvertEllipseCurve(PK_CURVE_t /*pk_curve*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertEllipseCurve(PK_CURVE_t /*pk_curve*/, Xchg_CurvePtr* curve)
 {
     // TODO: implement
-    return nullptr;
+    *curve = nullptr;
+    return STEP_OK;
 }
 
-Xchg_CurvePtr PKToXchgConverter::ConvertNurbsCurve(PK_CURVE_t /*pk_curve*/)
+STEPExport_ErrorCode PKToXchgConverter::ConvertNurbsCurve(PK_CURVE_t /*pk_curve*/, Xchg_CurvePtr* curve)
 {
     // TODO: implement
-    return nullptr;
+    *curve = nullptr;
+    return STEP_OK;
 }

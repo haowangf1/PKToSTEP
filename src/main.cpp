@@ -113,13 +113,47 @@ int main(int argc, char* argv[])
         }
         printf("[Info] Converted to PK_BODY tag: %d\n", pk_body_tag);
 
-        // 5. Transmit PK_BODY to .x_t file
+        // 5. PK_BODY -> Xchg_Body (our converter) -> PK_BODY -> .x_t roundtrip
+        PK_BODY_t original_pk_body = static_cast<PK_BODY_t>(pk_body_tag);
+
+        PKToXchgConverter converter;
+        converter.SetLogCallback([](const std::string& msg) {
+            fprintf(stderr, "[Converter] %s\n", msg.c_str());
+        });
+
+        Xchg_BodyPtr roundtrip_xchg_body;
+        STEPExport_ErrorCode rc = converter.Convert(original_pk_body, &roundtrip_xchg_body);
+        if (rc != STEP_OK || !roundtrip_xchg_body) {
+            fprintf(stderr, "[Error] PKToXchgConverter::Convert failed: %d\n", rc);
+            continue;
+        }
+        printf("[Info] PK_BODY -> Xchg_Body succeeded.\n");
+
+        Xchg_MainDocPtr rt_doc = Xchg_MainDoc::Create();
+        Xchg_ComponentPtr rt_comp = rt_doc->CreateComponent(
+            L"roundtrip", L"roundtrip", Xchg_Component::ComponentInternal);
+        rt_doc->SetRootComponent(rt_comp);
+        Xchg_NodePtr rt_node = rt_comp->CreateBodyNode(L"body", roundtrip_xchg_body, 0);
+
+        Xchg_Int32 rt_err = rt_node->ConvertToPKBody();
+        if (rt_err != 0) {
+            fprintf(stderr, "[Error] Roundtrip ConvertToPKBody failed: %d\n", rt_err);
+            continue;
+        }
+        Xchg_Int32 rt_pk_body = rt_node->GetParasolidBody();
+        if (rt_pk_body == 0) {
+            fprintf(stderr, "[Error] Roundtrip GetParasolidBody returned null.\n");
+            continue;
+        }
+        printf("[Info] Xchg_Body -> PK_BODY roundtrip succeeded, new tag: %d\n", rt_pk_body);
+
+        // 6. Transmit roundtrip PK_BODY to .x_t file
         std::string out = xt_path;
         if (body_count > 0) {
             out = xt_path + "." + std::to_string(body_count);
         }
 
-        if (TransmitBodyToXT(static_cast<PK_BODY_t>(pk_body_tag), out.c_str())) {
+        if (TransmitBodyToXT(static_cast<PK_BODY_t>(rt_pk_body), out.c_str())) {
             printf("[Info] Written to: %s\n", out.c_str());
         }
         ++body_count;
@@ -131,7 +165,7 @@ int main(int argc, char* argv[])
         printf("[Info] Total %d bodies converted.\n", body_count);
     }
 
-    // 6. Cleanup
+    // 7. Cleanup
     AMXT_STP_CTX_destory(ctx);
     StopSession();
     printf("[Info] Done.\n");

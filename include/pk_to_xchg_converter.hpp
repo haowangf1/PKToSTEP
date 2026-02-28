@@ -6,6 +6,7 @@
 #include <functional>
 
 #include "parasolid_kernel.h"
+#include "xchg_error_code.hpp"
 
 #include "topology/xchg_body.hpp"
 #include "topology/xchg_lump.hpp"
@@ -26,7 +27,7 @@ public:
     PKToXchgConverter(const PKToXchgConverter&) = delete;
     PKToXchgConverter& operator=(const PKToXchgConverter&) = delete;
 
-    Xchg_BodyPtr Convert(PK_BODY_t pk_body);
+    STEPExport_ErrorCode Convert(PK_BODY_t pk_body, Xchg_BodyPtr* body);
 
     using LogCallback = std::function<void(const std::string&)>;
     void SetLogCallback(LogCallback cb) { log_callback_ = std::move(cb); }
@@ -42,36 +43,39 @@ private:
         PKMemGuard& operator=(const PKMemGuard&) = delete;
     };
 
+    // PK error -> STEPExport_ErrorCode, returns STEP_OK on no error
+    STEPExport_ErrorCode PKErr(PK_ERROR_code_t err, const char* context);
+
     // topology conversion
-    void ConvertRegions(PK_BODY_t pk_body, PK_BODY_type_t body_type);
-    Xchg_ShellPtr ConvertShell(PK_SHELL_t pk_shell);
-    Xchg_FacePtr ConvertFace(PK_FACE_t pk_face);
-    Xchg_LoopPtr ConvertLoop(PK_LOOP_t pk_loop);
-    Xchg_CoedgePtr ConvertFin(PK_FIN_t pk_fin);
-    Xchg_EdgePtr ConvertEdge(PK_EDGE_t pk_edge);
-    Xchg_VertexPtr ConvertVertex(PK_VERTEX_t pk_vertex);
+    STEPExport_ErrorCode ConvertRegions(PK_BODY_t pk_body, PK_BODY_type_t body_type);
+    STEPExport_ErrorCode ConvertShell(PK_SHELL_t pk_shell, Xchg_ShellPtr* shell);
+    STEPExport_ErrorCode ConvertFace(PK_FACE_t pk_face, Xchg_FacePtr* face);
+    STEPExport_ErrorCode ConvertLoop(PK_LOOP_t pk_loop, Xchg_LoopPtr* loop);
+    STEPExport_ErrorCode ConvertFin(PK_FIN_t pk_fin, Xchg_CoedgePtr* coedge);
+    STEPExport_ErrorCode ConvertEdge(PK_EDGE_t pk_edge, Xchg_EdgePtr* edge);
+    STEPExport_ErrorCode ConvertVertex(PK_VERTEX_t pk_vertex, Xchg_VertexPtr* vertex);
 
     // geometry conversion
-    Xchg_SurfacePtr ConvertSurface(PK_SURF_t pk_surf);
-    Xchg_CurvePtr ConvertCurve(PK_CURVE_t pk_curve);
-    Xchg_PointPtr ConvertPoint(PK_POINT_t pk_point);
+    STEPExport_ErrorCode ConvertSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
+    STEPExport_ErrorCode ConvertCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve);
+    STEPExport_ErrorCode ConvertPoint(PK_POINT_t pk_point, Xchg_PointPtr* point);
 
     // surface type dispatch
-    Xchg_SurfacePtr ConvertPlaneSurface(PK_SURF_t pk_surf);
-    Xchg_SurfacePtr ConvertCylindricalSurface(PK_SURF_t pk_surf);
-    Xchg_SurfacePtr ConvertConicalSurface(PK_SURF_t pk_surf);
-    Xchg_SurfacePtr ConvertSphericalSurface(PK_SURF_t pk_surf);
-    Xchg_SurfacePtr ConvertToroidalSurface(PK_SURF_t pk_surf);
-    Xchg_SurfacePtr ConvertNurbsSurface(PK_SURF_t pk_surf);
-    Xchg_SurfacePtr ConvertSweptSurface(PK_SURF_t pk_surf);
-    Xchg_SurfacePtr ConvertSpunSurface(PK_SURF_t pk_surf);
-    Xchg_SurfacePtr ConvertOffsetSurface(PK_SURF_t pk_surf);
+    STEPExport_ErrorCode ConvertPlaneSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
+    STEPExport_ErrorCode ConvertCylindricalSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
+    STEPExport_ErrorCode ConvertConicalSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
+    STEPExport_ErrorCode ConvertSphericalSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
+    STEPExport_ErrorCode ConvertToroidalSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
+    STEPExport_ErrorCode ConvertNurbsSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
+    STEPExport_ErrorCode ConvertSweptSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
+    STEPExport_ErrorCode ConvertSpunSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
+    STEPExport_ErrorCode ConvertOffsetSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface);
 
     // curve type dispatch
-    Xchg_CurvePtr ConvertLineCurve(PK_CURVE_t pk_curve);
-    Xchg_CurvePtr ConvertCircleCurve(PK_CURVE_t pk_curve);
-    Xchg_CurvePtr ConvertEllipseCurve(PK_CURVE_t pk_curve);
-    Xchg_CurvePtr ConvertNurbsCurve(PK_CURVE_t pk_curve);
+    STEPExport_ErrorCode ConvertLineCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve);
+    STEPExport_ErrorCode ConvertCircleCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve);
+    STEPExport_ErrorCode ConvertEllipseCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve);
+    STEPExport_ErrorCode ConvertNurbsCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve);
 
     // shell type helper
     void AddShellToLump(const Xchg_ShellPtr& shell, const Xchg_LumpPtr& lump,
@@ -80,9 +84,6 @@ private:
 
     // logging
     void Log(const std::string& msg);
-
-    // error check helper — returns true on error
-    bool PKCheck(PK_ERROR_code_t err, const char* context);
 
     // entity dedup maps
     std::unordered_map<PK_ENTITY_t, Xchg_FacePtr>    pk_face_map_;
