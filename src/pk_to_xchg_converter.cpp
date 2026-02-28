@@ -681,93 +681,401 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertCurve(PK_CURVE_t pk_curve, Xchg_C
 // Geometry stubs (to be implemented)
 // ---------------------------------------------------------------------------
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertPlaneSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
+STEPExport_ErrorCode PKToXchgConverter::ConvertPlaneSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
-    // TODO: implement
     *surface = nullptr;
+
+    PK_PLANE_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_PLANE_ask(pk_surf, &sf), "PK_PLANE_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_pnt origin(sf.basis_set.location.coord[0],
+                    sf.basis_set.location.coord[1],
+                    sf.basis_set.location.coord[2]);
+    Xchg_dir normal(sf.basis_set.axis.coord[0],
+                    sf.basis_set.axis.coord[1],
+                    sf.basis_set.axis.coord[2]);
+    Xchg_dir u_dir(sf.basis_set.ref_direction.coord[0],
+                   sf.basis_set.ref_direction.coord[1],
+                   sf.basis_set.ref_direction.coord[2]);
+
+    auto plane = Xchg_PlaneSurface::Create(origin, normal, u_dir);
+    *surface = Xchg_SurfacePtr(plane.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertCylindricalSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
+STEPExport_ErrorCode PKToXchgConverter::ConvertCylindricalSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
-    // TODO: implement
     *surface = nullptr;
+
+    PK_CYL_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_CYL_ask(pk_surf, &sf), "PK_CYL_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_pnt origin(sf.basis_set.location.coord[0],
+                    sf.basis_set.location.coord[1],
+                    sf.basis_set.location.coord[2]);
+    Xchg_dir axis(sf.basis_set.axis.coord[0],
+                  sf.basis_set.axis.coord[1],
+                  sf.basis_set.axis.coord[2]);
+    Xchg_dir u_dir(sf.basis_set.ref_direction.coord[0],
+                   sf.basis_set.ref_direction.coord[1],
+                   sf.basis_set.ref_direction.coord[2]);
+
+    auto cyl = Xchg_CylindricalSurface::Create(origin, axis, u_dir, sf.radius);
+    *surface = Xchg_SurfacePtr(cyl.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertConicalSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
+STEPExport_ErrorCode PKToXchgConverter::ConvertConicalSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
-    // TODO: implement
     *surface = nullptr;
+
+    PK_CONE_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_CONE_ask(pk_surf, &sf), "PK_CONE_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_pnt origin(sf.basis_set.location.coord[0],
+                    sf.basis_set.location.coord[1],
+                    sf.basis_set.location.coord[2]);
+    Xchg_dir axis(sf.basis_set.axis.coord[0],
+                  sf.basis_set.axis.coord[1],
+                  sf.basis_set.axis.coord[2]);
+    Xchg_dir u_dir(sf.basis_set.ref_direction.coord[0],
+                   sf.basis_set.ref_direction.coord[1],
+                   sf.basis_set.ref_direction.coord[2]);
+
+    auto cone = Xchg_ConicalSurface::Create(origin, axis, u_dir, sf.radius, sf.semi_angle);
+    *surface = Xchg_SurfacePtr(cone.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertSphericalSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
+STEPExport_ErrorCode PKToXchgConverter::ConvertSphericalSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
-    // TODO: implement
     *surface = nullptr;
+
+    PK_SPHERE_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_SPHERE_ask(pk_surf, &sf), "PK_SPHERE_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_pnt origin(sf.basis_set.location.coord[0],
+                    sf.basis_set.location.coord[1],
+                    sf.basis_set.location.coord[2]);
+    Xchg_dir axis(sf.basis_set.axis.coord[0],
+                  sf.basis_set.axis.coord[1],
+                  sf.basis_set.axis.coord[2]);
+    Xchg_dir u_dir(sf.basis_set.ref_direction.coord[0],
+                   sf.basis_set.ref_direction.coord[1],
+                   sf.basis_set.ref_direction.coord[2]);
+
+    auto sphere = Xchg_SphericalSurface::Create(origin, axis, u_dir, sf.radius);
+    *surface = Xchg_SurfacePtr(sphere.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertToroidalSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
+STEPExport_ErrorCode PKToXchgConverter::ConvertToroidalSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
-    // TODO: implement
     *surface = nullptr;
+
+    PK_TORUS_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_TORUS_ask(pk_surf, &sf), "PK_TORUS_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_pnt origin(sf.basis_set.location.coord[0],
+                    sf.basis_set.location.coord[1],
+                    sf.basis_set.location.coord[2]);
+    Xchg_dir axis(sf.basis_set.axis.coord[0],
+                  sf.basis_set.axis.coord[1],
+                  sf.basis_set.axis.coord[2]);
+    Xchg_dir u_dir(sf.basis_set.ref_direction.coord[0],
+                   sf.basis_set.ref_direction.coord[1],
+                   sf.basis_set.ref_direction.coord[2]);
+
+    auto torus = Xchg_ToroidalSurface::Create(origin, axis, u_dir, sf.major_radius, sf.minor_radius);
+    *surface = Xchg_SurfacePtr(torus.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertNurbsSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
+STEPExport_ErrorCode PKToXchgConverter::ConvertNurbsSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
-    // TODO: implement
     *surface = nullptr;
+
+    PK_BSURF_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_BSURF_ask(pk_surf, &sf), "PK_BSURF_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    // U knots
+    Xchg_vector<Xchg_Double64> u_knots;
+    Xchg_vector<Xchg_UChar8>   u_mults;
+    for (int i = 0; i < sf.n_u_knots; ++i) {
+        u_knots.push_back(sf.u_knot[i]);
+        u_mults.push_back(static_cast<Xchg_UChar8>(sf.u_knot_mult[i]));
+    }
+
+    // V knots
+    Xchg_vector<Xchg_Double64> v_knots;
+    Xchg_vector<Xchg_UChar8>   v_mults;
+    for (int i = 0; i < sf.n_v_knots; ++i) {
+        v_knots.push_back(sf.v_knot[i]);
+        v_mults.push_back(static_cast<Xchg_UChar8>(sf.v_knot_mult[i]));
+    }
+
+    // Control points (PK stores in v-major order) and weights
+    int dim = sf.vertex_dim;  // 3 = polynomial, 4 = rational
+    int n_pts = sf.n_u_vertices * sf.n_v_vertices;
+    Xchg_vector<Xchg_pnt>     ctrl_pts;
+    Xchg_vector<Xchg_Double64> weights;
+
+    for (int i = 0; i < n_pts; ++i) {
+        const double* v = sf.vertex + i * dim;
+        if (sf.is_rational && dim == 4) {
+            double w = v[3];
+            if (w != 0.0)
+                ctrl_pts.push_back(Xchg_pnt(v[0] / w, v[1] / w, v[2] / w));
+            else
+                ctrl_pts.push_back(Xchg_pnt(v[0], v[1], v[2]));
+            weights.push_back(w);
+        } else {
+            ctrl_pts.push_back(Xchg_pnt(v[0], v[1], v[2]));
+        }
+    }
+
+    Xchg_bool u_closed = sf.is_u_closed ? XCHG_TRUE : XCHG_FALSE;
+    Xchg_bool v_closed = sf.is_v_closed ? XCHG_TRUE : XCHG_FALSE;
+
+    Xchg_NurbsSurfacePtr nurbs = Xchg_NurbsSurface::Create(
+        static_cast<Xchg_UInt32>(sf.u_degree),
+        static_cast<Xchg_UInt32>(sf.v_degree),
+        u_knots, v_knots, u_mults, v_mults,
+        ctrl_pts, u_closed, v_closed, weights);
+
+    if (nurbs) {
+        if (sf.is_u_periodic)
+            nurbs->SetUPeriodic();
+        if (sf.is_v_periodic)
+            nurbs->SetVPeriodic();
+    }
+
+    // Free PK-allocated memory inside sf
+    if (sf.vertex)      PK_MEMORY_free(sf.vertex);
+    if (sf.u_knot)      PK_MEMORY_free(sf.u_knot);
+    if (sf.v_knot)      PK_MEMORY_free(sf.v_knot);
+    if (sf.u_knot_mult) PK_MEMORY_free(sf.u_knot_mult);
+    if (sf.v_knot_mult) PK_MEMORY_free(sf.v_knot_mult);
+
+    *surface = Xchg_SurfacePtr(nurbs.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertSweptSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
+STEPExport_ErrorCode PKToXchgConverter::ConvertSweptSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
-    // TODO: implement
     *surface = nullptr;
+
+    PK_SWEPT_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_SWEPT_ask(pk_surf, &sf), "PK_SWEPT_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_CurvePtr profile;
+    rc = ConvertCurve(sf.curve, &profile);
+    if (rc != STEP_OK)
+        return rc;
+    if (!profile) {
+        Log("SweptSurface: failed to convert profile curve");
+        return STEP_OK;
+    }
+
+    Xchg_dir extrusion_dir(sf.direction.coord[0],
+                           sf.direction.coord[1],
+                           sf.direction.coord[2]);
+
+    auto swept = Xchg_LinearExtrusionSurface::Create(profile, extrusion_dir);
+    *surface = Xchg_SurfacePtr(swept.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertSpunSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
+STEPExport_ErrorCode PKToXchgConverter::ConvertSpunSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
-    // TODO: implement
     *surface = nullptr;
+
+    PK_SPUN_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_SPUN_ask(pk_surf, &sf), "PK_SPUN_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_CurvePtr meridian;
+    rc = ConvertCurve(sf.curve, &meridian);
+    if (rc != STEP_OK)
+        return rc;
+    if (!meridian) {
+        Log("SpunSurface: failed to convert meridian curve");
+        return STEP_OK;
+    }
+
+    Xchg_pnt axis_pos(sf.axis.location.coord[0],
+                      sf.axis.location.coord[1],
+                      sf.axis.location.coord[2]);
+    Xchg_dir axis_dir(sf.axis.axis.coord[0],
+                      sf.axis.axis.coord[1],
+                      sf.axis.axis.coord[2]);
+
+    auto rev = Xchg_RevolutionSurface::Create(meridian, axis_pos, axis_dir);
+    *surface = Xchg_SurfacePtr(rev.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertOffsetSurface(PK_SURF_t /*pk_surf*/, Xchg_SurfacePtr* surface)
+STEPExport_ErrorCode PKToXchgConverter::ConvertOffsetSurface(PK_SURF_t pk_surf, Xchg_SurfacePtr* surface)
 {
-    // TODO: implement
     *surface = nullptr;
+
+    PK_OFFSET_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_OFFSET_ask(pk_surf, &sf), "PK_OFFSET_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_SurfacePtr base_surf;
+    rc = ConvertSurface(sf.underlying_surface, &base_surf);
+    if (rc != STEP_OK)
+        return rc;
+    if (!base_surf) {
+        Log("OffsetSurface: failed to convert underlying surface");
+        return STEP_OK;
+    }
+
+    auto offset = Xchg_OffsetSurface::Create(base_surf, sf.offset_distance);
+    *surface = Xchg_SurfacePtr(offset.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertLineCurve(PK_CURVE_t /*pk_curve*/, Xchg_CurvePtr* curve)
+STEPExport_ErrorCode PKToXchgConverter::ConvertLineCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve)
 {
-    // TODO: implement
     *curve = nullptr;
+
+    PK_LINE_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_LINE_ask(pk_curve, &sf), "PK_LINE_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_pnt origin(sf.basis_set.location.coord[0],
+                    sf.basis_set.location.coord[1],
+                    sf.basis_set.location.coord[2]);
+    Xchg_dir dir(sf.basis_set.axis.coord[0],
+                 sf.basis_set.axis.coord[1],
+                 sf.basis_set.axis.coord[2]);
+
+    auto line = Xchg_Line::Create(origin, dir);
+    *curve = Xchg_CurvePtr(line.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertCircleCurve(PK_CURVE_t /*pk_curve*/, Xchg_CurvePtr* curve)
+STEPExport_ErrorCode PKToXchgConverter::ConvertCircleCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve)
 {
-    // TODO: implement
     *curve = nullptr;
+
+    PK_CIRCLE_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_CIRCLE_ask(pk_curve, &sf), "PK_CIRCLE_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_pnt center(sf.basis_set.location.coord[0],
+                    sf.basis_set.location.coord[1],
+                    sf.basis_set.location.coord[2]);
+    Xchg_dir normal(sf.basis_set.axis.coord[0],
+                    sf.basis_set.axis.coord[1],
+                    sf.basis_set.axis.coord[2]);
+    Xchg_dir x_ref(sf.basis_set.ref_direction.coord[0],
+                   sf.basis_set.ref_direction.coord[1],
+                   sf.basis_set.ref_direction.coord[2]);
+
+    auto circle = Xchg_Ellipse::Create(center, normal, x_ref, sf.radius);
+    *curve = Xchg_CurvePtr(circle.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertEllipseCurve(PK_CURVE_t /*pk_curve*/, Xchg_CurvePtr* curve)
+STEPExport_ErrorCode PKToXchgConverter::ConvertEllipseCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve)
 {
-    // TODO: implement
     *curve = nullptr;
+
+    PK_ELLIPSE_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_ELLIPSE_ask(pk_curve, &sf), "PK_ELLIPSE_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_pnt center(sf.basis_set.location.coord[0],
+                    sf.basis_set.location.coord[1],
+                    sf.basis_set.location.coord[2]);
+    Xchg_dir normal(sf.basis_set.axis.coord[0],
+                    sf.basis_set.axis.coord[1],
+                    sf.basis_set.axis.coord[2]);
+    Xchg_dir x_ref(sf.basis_set.ref_direction.coord[0],
+                   sf.basis_set.ref_direction.coord[1],
+                   sf.basis_set.ref_direction.coord[2]);
+
+    auto ellipse = Xchg_Ellipse::Create(center, normal, x_ref, sf.R1, sf.R2);
+    *curve = Xchg_CurvePtr(ellipse.get());
     return STEP_OK;
 }
 
-STEPExport_ErrorCode PKToXchgConverter::ConvertNurbsCurve(PK_CURVE_t /*pk_curve*/, Xchg_CurvePtr* curve)
+STEPExport_ErrorCode PKToXchgConverter::ConvertNurbsCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve)
 {
-    // TODO: implement
     *curve = nullptr;
+
+    PK_BCURVE_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_BCURVE_ask(pk_curve, &sf), "PK_BCURVE_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    // Build flat knot vector from PK's (value, multiplicity) pairs
+    Xchg_vector<Xchg_Double64> knots;
+    Xchg_vector<Xchg_UChar8>   mults;
+    for (int i = 0; i < sf.n_knots; ++i) {
+        knots.push_back(sf.knot[i]);
+        mults.push_back(static_cast<Xchg_UChar8>(sf.knot_mult[i]));
+    }
+
+    // Extract control points and weights
+    int dim = sf.vertex_dim;  // 3 = polynomial 3D, 4 = rational 3D, 2 = UV curve
+    Xchg_vector<Xchg_pnt>     ctrl_pts;
+    Xchg_vector<Xchg_Double64> weights;
+
+    for (int i = 0; i < sf.n_vertices; ++i) {
+        const double* v = sf.vertex + i * dim;
+        if (sf.is_rational && dim == 4) {
+            double w = v[3];
+            if (w != 0.0)
+                ctrl_pts.push_back(Xchg_pnt(v[0] / w, v[1] / w, v[2] / w));
+            else
+                ctrl_pts.push_back(Xchg_pnt(v[0], v[1], v[2]));
+            weights.push_back(w);
+        } else if (dim == 3) {
+            ctrl_pts.push_back(Xchg_pnt(v[0], v[1], v[2]));
+        } else if (dim == 2) {
+            ctrl_pts.push_back(Xchg_pnt(v[0], v[1], 0.0));
+        }
+    }
+
+    Xchg_NurbsCurvePtr nurbs = Xchg_NurbsCurve::Create(
+        static_cast<Xchg_UInt32>(sf.degree),
+        knots, mults, ctrl_pts, weights);
+
+    if (nurbs) {
+        if (sf.is_periodic)
+            nurbs->SetPeriodic();
+        if (sf.is_closed)
+            nurbs->SetClosed(XCHG_TRUE);
+    }
+
+    // Free PK-allocated memory inside sf
+    if (sf.vertex)    PK_MEMORY_free(sf.vertex);
+    if (sf.knot)      PK_MEMORY_free(sf.knot);
+    if (sf.knot_mult) PK_MEMORY_free(sf.knot_mult);
+
+    *curve = Xchg_CurvePtr(nurbs.get());
     return STEP_OK;
 }
