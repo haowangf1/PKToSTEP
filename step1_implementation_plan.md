@@ -63,15 +63,14 @@ Xchg_Body                        (最高级，Create()创建)
 ##### 1.3.2 关键差异与处理策略
 
 **差异1：PK_REGION vs Xchg_Lump**
-- Xchg_Lump 文档明确说："aligning with Parasolid Region"，即与 PK_REGION 对齐。
-- PK_BODY 总有一个**无穷 void region**（regions[0]）。
-- **策略（无损转换）**：遍历 `PK_BODY_ask_regions()` 返回的**所有** regions，每个 region → 一个 Xchg_Lump。
-  - 使用 `PK_REGION_is_solid()` 判断 region 类型
-  - **所有 region 都要转换**，不跳过任何 region
-  - Solid body：solid region → Lump（其 shell 作为 outer shell）；bounded void region → Lump（其 shell 作为 inner shell）；infinite void region → Lump（其 shell 是 solid 外边界的反向视角）
-  - Sheet body：void region 包含 sheet shell → Lump + AddOpenShell
-  - Wire body：void region 包含 wireframe shell → Lump + AddWireShell
-  - 注意：PK 中每个 face 属于 2 个 shell（来自 face 两侧的 region），面对象需 map 去重，同一个 Xchg_Face 可能被两个 Xchg_Shell 引用
+- PK_BODY 总有一个**无穷 void region**（regions[0]），以及若干 solid/bounded void region。
+- Xchg (STEP/BREP) 中**不需要单独表示 void region**。Xchg→PK 转换时，PK 会自动根据 outer shell 推导 infinite void region（outer shell 的 face 反面即为 void region 的 shell），根据 inner shell 推导 bounded void region。
+- **策略**：一个 Body 只创建**一个 Xchg_Lump**，通过 shell 的 outer/inner 属性来表达拓扑关系：
+  - Solid body：跳过 infinite void region；solid region 的 shell → `AddOuterShell`；bounded void region（空腔）的 shell → `AddInnerShell`
+  - Sheet body：只处理 infinite void region，其 shell → `AddOpenShell`
+  - Wire body：只处理 infinite void region，其 shell → `AddWireShell`
+  - Acorn body：只处理 infinite void region，其 shell → `AddWireShell`
+  - 不需要对 face 做跨 region 去重（因为不再遍历同一 face 的两个 region）
 
 **差异2：PK_SHELL 类型 vs Xchg_Shell 添加方式**
 - PK 中 Shell 属于 Region，通过 `PK_SHELL_ask_type()` 获取类型：
@@ -85,16 +84,13 @@ Xchg_Body                        (最高级，Create()创建)
   - `Xchg_Lump::AddOpenShell()` → 开放壳（sheet body）
   - `Xchg_Lump::AddWireShell()` → 线框壳（wire body）
 - **策略（按 region 类型+shell 类型综合判断）**：
-  - Solid region 的 shell：
-    - 该 shell 是 solid region 的边界 → `lump->AddOuterShell(shell)`
-  - Bounded void region 的 shell：
-    - 该 shell 是空腔的边界 → `lump->AddInnerShell(shell)`
-  - Infinite void region 的 shell（含 face 的）：
-    - Solid body 中：该 shell 是 solid 外边界从 void 侧看 → `lump->AddOuterShell(shell)`
-      （与 solid region 的 outer shell 引用相同 face，但 orientation 相反）
-    - Sheet body 中：该 shell 包含 sheet face → `lump->AddOpenShell(shell)`
-  - Wireframe shell：`lump->AddWireShell(shell)`
-  - Acorn shell：`lump->AddWireShell(shell)`（只含 vertex）
+  - Solid region 的 shell → `lump->AddOuterShell(shell)`
+  - Bounded void region（空腔）的 shell → `lump->AddInnerShell(shell)`
+  - Infinite void region 的 shell（仅 non-solid body）：
+    - Sheet body → `lump->AddOpenShell(shell)`
+    - Wire/Acorn body → `lump->AddWireShell(shell)`
+  - Wireframe/Acorn shell → `lump->AddWireShell(shell)`
+  - **Solid body 中跳过 infinite void region**（其 face 与 solid region 共享，不需要重复表示）
 
 **差异3：PK_FIN vs Xchg_Coedge**
 - PK 中 **Fin** 是 Edge 在 Loop 中的有向使用，连接 Loop 和 Edge。
@@ -267,57 +263,39 @@ Xchg_Body                        (最高级，Create()创建)
 4. xchg_body->SetBodyType(mapped_type)
 ```
 
-##### 2.2 Region → Lump 转换（无损：所有 region 都转换）
+##### 2.2 Region → Lump 转换（Xchg 不需要 void region）
 ```
 输入: PK_BODY_t pk_body, Xchg_BodyPtr xchg_body
 步骤:
 1. PK_BODY_ask_regions(pk_body, &n_regions, &regions)
    → regions[0] 总是无穷 void region
-   → 所有 region 都需要转换，不跳过任何一个
 
-2. 遍历所有 regions[0..n_regions-1]:
-   对每个 region:
-     a. PK_REGION_is_solid(region, &is_solid) → 判断 solid/void
-     b. Xchg_Lump::Create(xchg_body) → 创建 Lump
-     c. xchg_body->AddLump(lump)
-     d. PK_REGION_ask_shells(region, &n_shells, &shells)
-     e. 遍历 shells:
-        - PK_SHELL_ask_type(shell, &shell_type) → 获取 shell 类型
-        - ConvertShell(shell) → xchg_shell
-        - 根据 region 类型 + shell 类型决定添加方式:
+2. 创建一个 Lump:
+   Xchg_Lump::Create(xchg_body) → lump
+   xchg_body->AddLump(lump)
 
-3. Shell 添加方式判断:
+3. 遍历 regions，根据 body 类型选择性处理:
 
-   ═══ Solid Region 的 Shell ═══
-   - 该 shell 是 solid region 的边界
-   - lump->AddOuterShell(xchg_shell)
+   ═══ Solid Body ═══
+   - 跳过 infinite void region（regions[0]）
+   - Solid region 的 shell → lump->AddOuterShell(xchg_shell)
+   - Bounded void region（空腔）的 shell → lump->AddInnerShell(xchg_shell)
+   - 注意：不需要处理 infinite void region，Xchg→PK 转换时会自动
+     根据 outer shell 推导 void region（使用 face 的反面）
 
-   ═══ Bounded Void Region 的 Shell（空腔）═══
-   - 该 shell 是空腔的边界
-   - lump->AddInnerShell(xchg_shell)
+   ═══ Sheet Body ═══
+   - 只处理 infinite void region
+   - 其 shell → lump->AddOpenShell(xchg_shell)
 
-   ═══ Infinite Void Region 的 Shell ═══
-   根据 shell 类型:
-   - wireframe_free/mixed (含 face):
-     - Solid body 中: lump->AddOuterShell(xchg_shell)
-       → 这些 face 与 solid region shell 的 face 是同一批（PK 中每个 face 属于 2 个 shell）
-       → 用 face map 去重，确保同一 PK_FACE 只创建一个 Xchg_Face
-     - Sheet body 中: lump->AddOpenShell(xchg_shell)
-   - wireframe (只有 edge): lump->AddWireShell(xchg_shell)
-   - acorn (只有 vertex): lump->AddWireShell(xchg_shell)
-
-   ═══ Acorn Body ═══
-   - 只有 void region，shell 中只有 vertex
-   - lump->AddWireShell(xchg_shell)
+   ═══ Wire / Acorn Body ═══
+   - 只处理 infinite void region
+   - 其 shell → lump->AddWireShell(xchg_shell)
 
    ═══ General Body ═══
-   - 可能混合多种 shell 类型
    - 逐 shell 根据 PK_SHELL_ask_type() 判断并选择对应的 Add 方法
 
-注意：Face 去重至关重要
-- 在 PK 中，每个 face 被 2 个 shell 引用（face 两侧的 2 个 region 各有一个 shell）
-- 转换时需用 pk_face_map_ 确保同一 PK_FACE 只创建一个 Xchg_Face
-- 同一 Xchg_Face 被两个 Xchg_Shell 以不同 orientation 引用
+注意：由于不再遍历同一 face 的两个 region，不存在 face 跨 shell 重复引用的问题。
+Face 去重仍用于同一 shell 内可能出现的共享 face（虽然少见）。
 ```
 
 ##### 2.3 Shell 转换
@@ -743,13 +721,13 @@ private:
   } while(0)
   ```
 
-#### 5.6 特殊 Body 类型处理（所有类型都完整转换，不跳过任何 region）
+#### 5.6 特殊 Body 类型处理（Xchg 不需要 void region）
 
-- **Solid Body**: 所有 region → Lump。solid region 的 shell → outer shell；bounded void region 的 shell → inner shell；infinite void region 的 shell 也转换（与 solid 的 outer shell 引用相同 face，orientation 相反）
-- **Sheet Body**: void region 包含 sheet shell → Lump + AddOpenShell()。如果 sheet 闭合，可能有 bounded void region 也需转换
-- **Wire Body**: void region 包含 wireframe shell → Lump + AddWireShell()
-- **Acorn Body**: void region 包含 acorn shell → Lump + AddWireShell(vertex)
-- **General Body**: 可能混合以上类型，遍历所有 region 和 shell，逐 shell 根据 `PK_SHELL_ask_type()` 判断类型选择对应 Add 方法
+- **Solid Body**: 一个 Lump。跳过 infinite void region；solid region 的 shell → outer shell；bounded void region（空腔）的 shell → inner shell。Xchg→PK 转换时自动根据 outer shell 推导 void region。
+- **Sheet Body**: 一个 Lump。只处理 infinite void region，其 shell → AddOpenShell()
+- **Wire Body**: 一个 Lump。只处理 infinite void region，其 shell → AddWireShell()
+- **Acorn Body**: 一个 Lump。只处理 infinite void region，其 shell → AddWireShell(vertex)
+- **General Body**: 一个 Lump。遍历所有 non-void region 的 shell，逐 shell 根据 `PK_SHELL_ask_type()` 判断类型选择对应 Add 方法
 - **Empty Body**: 仅有无穷 void region 且无 shell → 创建空 Lump
 
 ### 6. 测试策略

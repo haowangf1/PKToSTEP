@@ -81,6 +81,19 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BOD
         return rc;
     PKMemGuard regions_guard(regions);
 
+    // Xchg (STEP/BREP) 中不需要单独表示 void region。
+    // Xchg→PK 转换时会自动根据 outer shell 推导 infinite void region，
+    // 根据 inner shell 推导 bounded void region。
+    // 因此：
+    //   Solid body: 只转换 solid region 的 shell → outer shell；
+    //               bounded void region 的 shell → inner shell；
+    //               跳过 infinite void region。
+    //   Sheet/Wire/Acorn body: 只有 infinite void region 包含拓扑，
+    //               其 shell 作为 open/wire shell。
+
+    Xchg_LumpPtr lump = Xchg_Lump::Create(current_body_);
+    current_body_->AddLump(lump);
+
     for (int ri = 0; ri < n_regions; ++ri) {
         PK_REGION_t region = regions[ri];
 
@@ -91,8 +104,17 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BOD
 
         bool is_infinite_void = (ri == 0 && is_solid == PK_LOGICAL_false);
 
-        Xchg_LumpPtr lump = Xchg_Lump::Create(current_body_);
-        current_body_->AddLump(lump);
+        // Solid body: 跳过 solid region（从 void region 的视角取 shell，
+        // 因为 STEP/BREP 约定 outer shell 的 face 法线指向外部）；
+        // 但保留 bounded void region 用于 inner shell（空腔）。
+        if (body_type == PK_BODY_type_solid_c && is_solid == PK_LOGICAL_true)
+            continue;
+
+        if ((body_type == PK_BODY_type_sheet_c ||
+             body_type == PK_BODY_type_wire_c ||
+             body_type == PK_BODY_type_acorn_c ||
+             body_type == PK_BODY_type_minimum_c) && !is_infinite_void)
+            continue;
 
         int n_shells = 0;
         PK_SHELL_t* shells = nullptr;
@@ -140,31 +162,28 @@ void PKToXchgConverter::AddShellToLump(
         return;
     }
 
-    if (is_solid_region) {
-        lump->AddOuterShell(shell);
+    // Bounded void region (cavity) → inner shell
+    if (!is_infinite_void) {
+        lump->AddInnerShell(shell);
         return;
     }
 
-    // void region
-    if (is_infinite_void) {
-        switch (body_type) {
-        case PK_BODY_type_solid_c:
-            lump->AddOuterShell(shell);
-            break;
-        case PK_BODY_type_sheet_c:
-            lump->AddOpenShell(shell);
-            break;
-        case PK_BODY_type_wire_c:
-        case PK_BODY_type_acorn_c:
-        case PK_BODY_type_minimum_c:
-            lump->AddWireShell(shell);
-            break;
-        default:
-            lump->AddOpenShell(shell);
-            break;
-        }
-    } else {
-        lump->AddInnerShell(shell);
+    // Infinite void region
+    switch (body_type) {
+    case PK_BODY_type_solid_c:
+        lump->AddOuterShell(shell);
+        break;
+    case PK_BODY_type_sheet_c:
+        lump->AddOpenShell(shell);
+        break;
+    case PK_BODY_type_wire_c:
+    case PK_BODY_type_acorn_c:
+    case PK_BODY_type_minimum_c:
+        lump->AddWireShell(shell);
+        break;
+    default:
+        lump->AddOpenShell(shell);
+        break;
     }
 }
 
