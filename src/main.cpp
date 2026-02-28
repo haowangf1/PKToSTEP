@@ -6,9 +6,81 @@
 #include "xchg_component.hpp"
 #include "xchg_node.hpp"
 #include "util/xchg_kernel_utils.hpp"
+#include "topology/xchg_body.hpp"
+#include "topology/xchg_lump.hpp"
+#include "topology/xchg_shell.hpp"
+#include "topology/xchg_face.hpp"
+#include "topology/xchg_loop.hpp"
+#include "topology/xchg_coedge.hpp"
+#include "topology/xchg_edge.hpp"
+#include "topology/xchg_vertex.hpp"
 
 #include <cstdio>
 #include <string>
+
+static void DumpXchgBodyTopo(const Xchg_BodyPtr& body, const char* label)
+{
+    printf("\n===== Xchg_Body Topo Dump: %s =====\n", label);
+    Xchg_Size_t nLumps = body->GetNumLumps();
+    printf("  Lumps: %zu\n", nLumps);
+
+    for (Xchg_Size_t li = 0; li < nLumps; ++li) {
+        Xchg_LumpPtr lump;
+        body->GetLump(li, lump);
+        Xchg_Size_t nShells = lump->GetNumShells();
+        printf("  Lump[%zu]: shells=%zu\n", li, nShells);
+
+        for (Xchg_Size_t si = 0; si < nShells; ++si) {
+            Xchg_ShellPtr shell;
+            lump->GetShell(si, shell);
+            Xchg_Size_t nFaces = shell->GetNumFaces(DtkFaceType_Bounded);
+            printf("    Shell[%zu]: faces=%zu closed=%d outer=%d\n",
+                   si, nFaces,
+                   (int)shell->IsClosed(), (int)shell->IsOuter());
+
+            for (Xchg_Size_t fi = 0; fi < nFaces; ++fi) {
+                Xchg_FacePtr face;
+                Xchg_bool faceOrient;
+                shell->GetFace(fi, face, faceOrient);
+                Xchg_Size_t nLoops = face->GetNumLoops();
+                printf("      Face[%zu]: orient=%d loops=%zu id=%lld\n",
+                       fi, (int)faceOrient, nLoops, (long long)face->GetTopoID());
+
+                for (Xchg_Size_t lli = 0; lli < nLoops; ++lli) {
+                    Xchg_LoopPtr loop;
+                    face->GetLoop(lli, loop);
+                    Xchg_Size_t nCoedges = loop->GetNumCoedges();
+                    printf("        Loop[%zu]: outer=%d orient=%d coedges=%zu\n",
+                           lli, (int)loop->IsOuter(), (int)loop->GetOrientation(), nCoedges);
+
+                    for (Xchg_Size_t ci = 0; ci < nCoedges; ++ci) {
+                        Xchg_CoedgePtr coedge;
+                        Xchg_bool coedgeOrient;
+                        loop->GetCoedge(ci, coedge, coedgeOrient);
+
+                        Xchg_EdgePtr edge;
+                        coedge->GetEdge(edge);
+
+                        Xchg_VertexPtr sv, ev;
+                        Xchg_ID svId = 0, evId = 0;
+                        if (edge) {
+                            edge->GetStartVertex(sv);
+                            edge->GetEndVertex(ev);
+                            if (sv) svId = sv->GetTopoID();
+                            if (ev) evId = ev->GetTopoID();
+                        }
+
+                        printf("          Coedge[%zu]: loopOrient=%d coedgeOrient=%d edge=%lld sv=%lld ev=%lld\n",
+                               ci, (int)coedgeOrient, (int)coedge->GetOrientation(),
+                               edge ? (long long)edge->GetTopoID() : -1,
+                               (long long)svId, (long long)evId);
+                    }
+                }
+            }
+        }
+    }
+    printf("===== End Dump: %s =====\n\n", label);
+}
 
 static bool TransmitBodyToXT(PK_BODY_t body, const char* output_path)
 {
@@ -99,6 +171,7 @@ int main(int argc, char* argv[])
         }
 
         printf("[Info] Found Body node at index %zu.\n", i);
+        DumpXchgBodyTopo(xchg_body, "STEP->Xchg (reference)");
 
         // 4. Convert Xchg_Body -> PK_BODY via Xchg_Node::ConvertToPKBody
         Xchg_Int32 convert_err = node->ConvertToPKBody();
@@ -128,6 +201,7 @@ int main(int argc, char* argv[])
             continue;
         }
         printf("[Info] PK_BODY -> Xchg_Body succeeded.\n");
+        DumpXchgBodyTopo(roundtrip_xchg_body, "PK->Xchg (ours)");
 
         Xchg_MainDocPtr rt_doc = Xchg_MainDoc::Create();
         Xchg_ComponentPtr rt_comp = rt_doc->CreateComponent(

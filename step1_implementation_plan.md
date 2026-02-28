@@ -66,7 +66,8 @@ Xchg_Body                        (最高级，Create()创建)
 - PK_BODY 总有一个**无穷 void region**。**PK 保证 `PK_BODY_ask_regions` 返回的第一个 region（`regions[0]`）一定是 infinite void region**，后续 region 为 solid 或 bounded void region。
 - Xchg (STEP/BREP) 中**不需要单独表示 void region**。Xchg→PK 转换时，PK 会自动根据 outer shell 推导 infinite void region（outer shell 的 face 反面即为 void region 的 shell），根据 inner shell 推导 bounded void region。
 - **策略**：一个 Body 只创建**一个 Xchg_Lump**，通过 shell 的 outer/inner 属性来表达拓扑关系：
-  - Solid body：跳过 infinite void region；solid region 的 shell → `AddOuterShell`；bounded void region（空腔）的 shell → `AddInnerShell`
+  - Solid body / **General body**：跳过 infinite void region；solid region 的 shell → `AddOuterShell`；bounded void region（空腔）的 shell → `AddInnerShell`
+  - **注意**：通过 `Xchg_Node::ConvertToPKBody()` 转换得到的 PK_BODY，其 `PK_BODY_ask_type` 返回的是 `PK_BODY_type_general_c`（5605）而非 `PK_BODY_type_solid_c`（5601），因此必须将 `general_c` 与 `solid_c` 同等处理。
   - Sheet body：只处理 infinite void region，其 shell → `AddOpenShell`
   - Wire body：只处理 infinite void region，其 shell → `AddWireShell`
   - Acorn body：只处理 infinite void region，其 shell → `AddWireShell`
@@ -84,13 +85,13 @@ Xchg_Body                        (最高级，Create()创建)
   - `Xchg_Lump::AddOpenShell()` → 开放壳（sheet body）
   - `Xchg_Lump::AddWireShell()` → 线框壳（wire body）
 - **策略（按 region 类型+shell 类型综合判断）**：
-  - Solid region 的 shell → `lump->AddOuterShell(shell)`
+  - Solid/General body 的 solid region shell → `lump->AddOuterShell(shell)`
   - Bounded void region（空腔）的 shell → `lump->AddInnerShell(shell)`
   - Infinite void region 的 shell（仅 non-solid body）：
     - Sheet body → `lump->AddOpenShell(shell)`
     - Wire/Acorn body → `lump->AddWireShell(shell)`
   - Wireframe/Acorn shell → `lump->AddWireShell(shell)`
-  - **Solid body 中跳过 infinite void region**（其 face 与 solid region 共享，不需要重复表示）
+  - **Solid/General body 中跳过 infinite void region**（其 face 与 solid region 共享，不需要重复表示）
 
 **差异3：PK_FIN vs Xchg_Coedge**
 - PK 中 **Fin** 是 Edge 在 Loop 中的有向使用，连接 Loop 和 Edge。

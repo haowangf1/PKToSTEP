@@ -101,8 +101,9 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BOD
         if (rc != STEP_OK)
             return rc;
 
-        // Solid body: 跳过 infinite void region，从 solid region 取 shell 作为 outer shell
-        if (body_type == PK_BODY_type_solid_c && is_infinite_void)
+        // Solid/General body: 跳过 infinite void region，从 solid region 取 shell 作为 outer shell
+        if ((body_type == PK_BODY_type_solid_c ||
+             body_type == PK_BODY_type_general_c) && is_infinite_void)
             continue;
 
         // Non-solid body: 只处理 infinite void region
@@ -164,9 +165,10 @@ void PKToXchgConverter::AddShellToLump(
         return;
     }
 
-    // Infinite void region or solid body context
+    // Solid region or infinite void region (non-solid body)
     switch (body_type) {
     case PK_BODY_type_solid_c:
+    case PK_BODY_type_general_c:
         lump->AddOuterShell(shell);
         break;
     case PK_BODY_type_sheet_c:
