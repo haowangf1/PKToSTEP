@@ -231,6 +231,10 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertShell(PK_SHELL_t pk_shell, Xchg_S
             if (rc != STEP_OK)
                 return rc;
 
+            // PK orients[i]=true: face normal 指向 shell 所围体积内部
+            // Xchg XCHG_TRUE: face material 与 shell material 同侧（face normal 朝外）
+            // face_orient=true: Xchg face normal = PK face normal
+            // 综合得出: xchg_orient = (orients[i] != face_orient)
             bool same = (orients[i] != face_orient);
             xchg_shell->AddFace(xchg_face, same ? XCHG_TRUE : XCHG_FALSE);
         }

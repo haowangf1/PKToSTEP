@@ -112,19 +112,18 @@ static bool TransmitBodyToXT(PK_BODY_t body, const char* output_path)
 
 int main(int argc, char* argv[])
 {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <input.step> [output_basename]\n", argv[0]);
-        return 1;
-    }
+    // 以 exe 所在目录为基准，向上找到项目根目录（exe 在 build/Debug/Debug/ 下，上三级是根目录）
+    std::string exe_dir = argv[0];
+    for (char& c : exe_dir) if (c == '\\') c = '/';
+    auto last_slash = exe_dir.rfind('/');
+    std::string base = (last_slash != std::string::npos) ? exe_dir.substr(0, last_slash + 1) : "./";
+    // build/Debug/Debug/ -> ../../.. 即项目根目录
+    base += "../../../";
 
-    const char* step_path = argv[1];
-    std::string xt_path;
-    if (argc >= 3) {
-        xt_path = argv[2];
-    } else {
-        // PK_PART_transmit 会自动追加 .xmt_txt 后缀
-        xt_path = std::string(step_path) + "_roundtrip";
-    }
+    std::string step_path = base + "resource/cube214.step";
+
+    // 输出文件名：去掉 .step 后缀，加 _roundtrip（PK 导出时会自动追加 .xmt_txt）
+    std::string xt_path = base + "resource/cube214_roundtrip";
 
     // 1. Start Parasolid session
     Xchg_Int32 pk_err = StartSession();
@@ -147,7 +146,7 @@ int main(int argc, char* argv[])
     AMXT_STP_read_o_m(read_opts);
 
     Xchg_MainDocPtr main_doc = Xchg_MainDoc::Create();
-    stp_err = AMXT_STP_read(ctx, step_path, &read_opts, &main_doc);
+    stp_err = AMXT_STP_read(ctx, step_path.c_str(), &read_opts, &main_doc);
     if (stp_err != AMXT_STP_ERROR_no_errors) {
         size_t err_instance = 0;
         const char* err_msg = nullptr;
@@ -158,7 +157,7 @@ int main(int argc, char* argv[])
         StopSession();
         return 1;
     }
-    printf("[Info] STEP file read successfully: %s\n", step_path);
+    printf("[Info] STEP file read successfully: %s\n", step_path.c_str());
 
     // 3. Get root component, iterate nodes to find Body nodes
     const Xchg_ComponentPtr& root = main_doc->RootComponent();
