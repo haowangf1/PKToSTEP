@@ -120,7 +120,7 @@ int main(int argc, char* argv[])
     // build/Debug/Debug/ -> ../../.. 即项目根目录
     base += "../../../";
 
-    std::string step_path = base + "resource/cube214.step";
+    std::string step_path = base + "resource/hollow_cube.step";
 
     // 从 step 文件路径提取不带扩展名的文件名，拼到同目录下加 _roundtrip 后缀
     // PK_PART_transmit 导出时会自动追加 .xmt_txt
@@ -130,7 +130,7 @@ int main(int argc, char* argv[])
     auto ext_pos = stem.rfind('.');
     if (ext_pos != std::string::npos)
         stem = stem.substr(0, ext_pos);
-    std::string xt_path = base + "resource/" + stem + "_roundtrip";
+    std::string xt_path = base + "xt/" + stem + "_roundtrip";
 
     // 1. Start Parasolid session
     Xchg_Int32 pk_err = StartSession();
