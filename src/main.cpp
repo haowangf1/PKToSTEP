@@ -122,8 +122,15 @@ int main(int argc, char* argv[])
 
     std::string step_path = base + "resource/cube214.step";
 
-    // 输出文件名：去掉 .step 后缀，加 _roundtrip（PK 导出时会自动追加 .xmt_txt）
-    std::string xt_path = base + "resource/cube214_roundtrip";
+    // 从 step 文件路径提取不带扩展名的文件名，拼到同目录下加 _roundtrip 后缀
+    // PK_PART_transmit 导出时会自动追加 .xmt_txt
+    auto name_start = step_path.rfind('/');
+    std::string stem = (name_start != std::string::npos)
+                       ? step_path.substr(name_start + 1) : step_path;
+    auto ext_pos = stem.rfind('.');
+    if (ext_pos != std::string::npos)
+        stem = stem.substr(0, ext_pos);
+    std::string xt_path = base + "resource/" + stem + "_roundtrip";
 
     // 1. Start Parasolid session
     Xchg_Int32 pk_err = StartSession();
