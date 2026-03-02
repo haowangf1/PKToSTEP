@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/build/Debug/Debug/PKToSTEP.exe",
             "args": [
                 "${workspaceFolder}/resource/cube214.step",
-                "${workspaceFolder}/resource/cube214_roundtrip.x_t"
+                "${workspaceFolder}/resource/cube214_roundtrip"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

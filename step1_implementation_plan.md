@@ -50,15 +50,15 @@ Xchg_Body                        (最高级，Create()创建)
 ##### 1.3.1 整体对应关系表
 
 | PK 实体 | PK 父子关系 | Xchg 实体 | Xchg 父子关系 | 映射说明 |
-|---------|------------|----------|-------------|---------|
+| --- | --- | --- | --- | --- |
 | PK_BODY | 包含 >=1 个 PK_REGION | Xchg_Body | 包含 >=1 个 Xchg_Lump | Body 1:1 映射 |
-| PK_REGION | 属于 Body，包含 >=1 个 Shell | Xchg_Lump | 属于 Body，包含 Shell | **所有 Region → Lump**，包括 void region |
+| PK_REGION | 属于 Body，包含 >=1 个 Shell | Xchg_Lump | 属于 Body，包含 Shell | solid Region → Lump，void region无需转换到x格式 |
 | PK_SHELL | 属于 Region，包含 Face+orientation | Xchg_Shell | 属于 Lump，包含 Face+orientation | Shell 1:1 映射，需设置 outer/inner/open |
 | PK_FACE | 属于 Shell(可属于2个)，包含 Loop | Xchg_Face | 属于 Shell，包含 Loop | Face 1:1 映射 |
 | PK_LOOP | 属于 Face，包含有序 Fin | Xchg_Loop | 属于 Face，包含有序 Coedge | Loop 1:1 映射 |
-| PK_FIN | 属于 Loop+Edge，有sense标志 | Xchg_Coedge | 属于 Loop，关联 Edge | **Fin → Coedge** 是关键映射 |
-| PK_EDGE | 包含 0-2 个 Vertex，包含 >=0 个 Fin | Xchg_Edge | 包含 Start/End Vertex | Edge 1:1 映射，**需去重共享** |
-| PK_VERTEX | 零维点 | Xchg_Vertex | 零维点 | Vertex 1:1 映射，**需去重共享** |
+| PK_FIN | 属于 Loop+Edge，有sense标志 | Xchg_Coedge | 属于 Loop，关联 Edge | Fin → Coedge 是关键映射 |
+| PK_EDGE | 包含 0-2 个 Vertex，包含 >=0 个 Fin | Xchg_Edge | 包含 Start/End Vertex | Edge 1:1 映射，需去重共享 |
+| PK_VERTEX | 零维点 | Xchg_Vertex | 零维点 | Vertex 1:1 映射，需去重共享 |
 
 ##### 1.3.2 关键差异与处理策略
 
@@ -217,11 +217,10 @@ Xchg_Body                        (最高级，Create()创建)
 #### 2.2 曲线类型映射
 
 | Parasolid 曲线类型 | AMCAXExchangeBase 类型 | 转换函数 |
-|-------------------|----------------------|---------|
+| --- | --- | --- |
 | PK_CURVE_line_c | Xchg_Line | 提取起点+方向 |
 | PK_CURVE_circle_c | Xchg_Ellipse (圆形) | 提取中心+半径+法向 |
 | PK_CURVE_ellipse_c | Xchg_Ellipse | 提取中心+长短轴 |
-
 | PK_CURVE_bcurve_c | Xchg_NurbsCurve | 提取控制点+节点+权重+阶数 |
 | PK_CURVE_conic_c | Xchg_Conic/Hyperbola/Parabola | 根据类型转换 |
 | PK_CURVE_offset_c | Xchg_OffsetCurve | 提取基础曲线+偏移 |

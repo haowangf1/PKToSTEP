@@ -15,42 +15,54 @@
 #include "topology/xchg_edge.hpp"
 #include "topology/xchg_vertex.hpp"
 
+#include "geom/xchg_point.hpp"
+
 #include <cstdio>
 #include <string>
+#include <set>
+#include <map>
+
+static void PrintVertexCoord(const Xchg_VertexPtr& v)
+{
+    if (!v) { printf("(null)"); return; }
+    Xchg_PointPtr pt = v->GetGeom();
+    if (!pt) { printf("v%lld(?)", (long long)v->GetTopoID()); return; }
+    Xchg_Double64 x, y, z;
+    pt->GetCoordinates(x, y, z);
+    printf("v%lld(%.2f,%.2f,%.2f)", (long long)v->GetTopoID(), x, y, z);
+}
 
 static void DumpXchgBodyTopo(const Xchg_BodyPtr& body, const char* label)
 {
-    printf("\n===== Xchg_Body Topo Dump: %s =====\n", label);
+    printf("\n===== Xchg_Body Topo: %s =====\n", label);
     Xchg_Size_t nLumps = body->GetNumLumps();
-    printf("  Lumps: %zu\n", nLumps);
+    printf("Lumps: %zu\n", nLumps);
 
     for (Xchg_Size_t li = 0; li < nLumps; ++li) {
         Xchg_LumpPtr lump;
         body->GetLump(li, lump);
         Xchg_Size_t nShells = lump->GetNumShells();
-        printf("  Lump[%zu]: shells=%zu\n", li, nShells);
+        printf("Lump[%zu]: shells=%zu\n", li, nShells);
 
         for (Xchg_Size_t si = 0; si < nShells; ++si) {
             Xchg_ShellPtr shell;
             lump->GetShell(si, shell);
             Xchg_Size_t nFaces = shell->GetNumFaces(DtkFaceType_Bounded);
-            printf("    Shell[%zu]: faces=%zu closed=%d outer=%d\n",
-                   si, nFaces,
-                   (int)shell->IsClosed(), (int)shell->IsOuter());
+            printf("  Shell[%zu]: faces=%zu closed=%d outer=%d\n",
+                   si, nFaces, (int)shell->IsClosed(), (int)shell->IsOuter());
 
             for (Xchg_Size_t fi = 0; fi < nFaces; ++fi) {
                 Xchg_FacePtr face;
                 Xchg_bool faceOrient;
                 shell->GetFace(fi, face, faceOrient);
                 Xchg_Size_t nLoops = face->GetNumLoops();
-                printf("      Face[%zu]: orient=%d loops=%zu id=%lld\n",
-                       fi, (int)faceOrient, nLoops, (long long)face->GetTopoID());
+                printf("    Face[%zu]: shellOrient=%d loops=%zu\n", fi, (int)faceOrient, nLoops);
 
                 for (Xchg_Size_t lli = 0; lli < nLoops; ++lli) {
                     Xchg_LoopPtr loop;
                     face->GetLoop(lli, loop);
                     Xchg_Size_t nCoedges = loop->GetNumCoedges();
-                    printf("        Loop[%zu]: outer=%d orient=%d coedges=%zu\n",
+                    printf("      Loop[%zu]: outer=%d orient=%d coedges=%zu\n",
                            lli, (int)loop->IsOuter(), (int)loop->GetOrientation(), nCoedges);
 
                     for (Xchg_Size_t ci = 0; ci < nCoedges; ++ci) {
@@ -61,25 +73,26 @@ static void DumpXchgBodyTopo(const Xchg_BodyPtr& body, const char* label)
                         Xchg_EdgePtr edge;
                         coedge->GetEdge(edge);
 
+                        Xchg_bool sameSense = XCHG_TRUE;
                         Xchg_VertexPtr sv, ev;
-                        Xchg_ID svId = 0, evId = 0;
                         if (edge) {
+                            sameSense = edge->GetSameSense();
                             edge->GetStartVertex(sv);
                             edge->GetEndVertex(ev);
-                            if (sv) svId = sv->GetTopoID();
-                            if (ev) evId = ev->GetTopoID();
                         }
 
-                        printf("          Coedge[%zu]: loopOrient=%d coedgeOrient=%d edge=%lld sv=%lld ev=%lld\n",
-                               ci, (int)coedgeOrient, (int)coedge->GetOrientation(),
-                               edge ? (long long)edge->GetTopoID() : -1,
-                               (long long)svId, (long long)evId);
+                        printf("        CE[%zu]: inLoop=%d ceOrient=%d sameSense=%d ",
+                               ci, (int)coedgeOrient, (int)coedge->GetOrientation(), (int)sameSense);
+                        PrintVertexCoord(sv);
+                        printf(" -> ");
+                        PrintVertexCoord(ev);
+                        printf("\n");
                     }
                 }
             }
         }
     }
-    printf("===== End Dump: %s =====\n\n", label);
+    printf("===== End: %s =====\n\n", label);
 }
 
 static bool TransmitBodyToXT(PK_BODY_t body, const char* output_path)
@@ -100,7 +113,7 @@ static bool TransmitBodyToXT(PK_BODY_t body, const char* output_path)
 int main(int argc, char* argv[])
 {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <input.step> [output.x_t]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <input.step> [output_basename]\n", argv[0]);
         return 1;
     }
 
@@ -109,7 +122,8 @@ int main(int argc, char* argv[])
     if (argc >= 3) {
         xt_path = argv[2];
     } else {
-        xt_path = std::string(step_path) + ".x_t";
+        // PK_PART_transmit 会自动追加 .xmt_txt 后缀
+        xt_path = std::string(step_path) + "_roundtrip";
     }
 
     // 1. Start Parasolid session
