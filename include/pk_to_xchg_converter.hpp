@@ -85,7 +85,7 @@ private:
     // logging
     void Log(const std::string& msg);
 
-    // entity dedup maps
+    // save entitys in pk that has aleady been translated
     std::unordered_map<PK_ENTITY_t, Xchg_FacePtr>    pk_face_map_;
     std::unordered_map<PK_ENTITY_t, Xchg_EdgePtr>    pk_edge_map_;
     std::unordered_map<PK_ENTITY_t, Xchg_VertexPtr>  pk_vertex_map_;

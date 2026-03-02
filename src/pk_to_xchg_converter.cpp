@@ -89,6 +89,8 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BOD
     // Sheet/Wire/Acorn body: 只有 infinite void region (regions[0]) 包含拓扑，
     //             其 shell 作为 open/wire shell。
 
+
+    //TODO:: PK Body要求拓扑连通，通常只有一个连通体，单 Lump 足够；若遇到多连通 general body 需按连通分量分组创建多 Lump，当前暂不支持
     Xchg_LumpPtr lump = Xchg_Lump::Create(current_body_);
     current_body_->AddLump(lump);
 

@@ -65,7 +65,7 @@ Xchg_Body                        (最高级，Create()创建)
 **差异1：PK_REGION vs Xchg_Lump**
 - PK_BODY 总有一个**无穷 void region**。**PK 保证 `PK_BODY_ask_regions` 返回的第一个 region（`regions[0]`）一定是 infinite void region**，后续 region 为 solid 或 bounded void region。
 - Xchg (STEP/BREP) 中**不需要单独表示 void region**。Xchg→PK 转换时，PK 会自动根据 outer shell 推导 infinite void region（outer shell 的 face 反面即为 void region 的 shell），根据 inner shell 推导 bounded void region。
-- **策略**：一个 Body 只创建**一个 Xchg_Lump**，通过 shell 的 outer/inner 属性来表达拓扑关系：
+- **策略**：一个 Body 只创建**一个 Xchg_Lump**，通过 shell 的 outer/inner 属性来表达拓扑关系（PK Body 要求拓扑连通，通常只有一个连通体，单 Lump 足够；若遇到多连通 general body 需按连通分量分组创建多 Lump，当前暂不支持）：
   - Solid body / **General body**：跳过 infinite void region；solid region 的 shell → `AddOuterShell`；bounded void region（空腔）的 shell → `AddInnerShell`
   - **注意**：通过 `Xchg_Node::ConvertToPKBody()` 转换得到的 PK_BODY，其 `PK_BODY_ask_type` 返回的是 `PK_BODY_type_general_c`（5605）而非 `PK_BODY_type_solid_c`（5601），因此必须将 `general_c` 与 `solid_c` 同等处理。
   - Sheet body：只处理 infinite void region，其 shell → `AddOpenShell`
