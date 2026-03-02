@@ -116,28 +116,27 @@ Xchg_Body                        (最高级，Create()创建)
 
 **差异5：Face 方向 (orientation) — 需要精确映射**
 - PK 有两个独立的 orientation：
-  1. **Shell-Face orientation**：`PK_SHELL_ask_oriented_faces()` 返回
-     - `PK_LOGICAL_true`：face normal 指向 shell 内部（shell 所属 region 方向）
-     - `PK_LOGICAL_false`：face normal 指向 shell 外部
-  2. **Face-Surface orientation**：`PK_FACE_ask_oriented_surf()` 返回
-     - `PK_LOGICAL_true`：face normal 平行于 surface natural normal
-     - `PK_LOGICAL_false`：face normal 反平行于 surface natural normal
+  1. **Shell-Face orientation**：`PK_SHELL_ask_oriented_faces()` 返回 `orients[i]`
+     - `PK_LOGICAL_true`：face normal **指向 shell 所围体积内部**（对 solid region 的 shell = solid 内部）
+     - `PK_LOGICAL_false`：face normal 指向 shell 所围体积外部
+  2. **Face-Surface orientation**：`PK_FACE_ask_oriented_surf()` 返回 `face_orient`
+     - `PK_LOGICAL_true`：face normal 与 surface natural normal **同向**
+     - `PK_LOGICAL_false`：face normal 与 surface natural normal **反向**
 - ExchangeBase 约定：
-  - `Xchg_Face`："Geometrical orientation relative to basis surface is **always True**"
-    → 即 Xchg_Face normal **始终等于** basis surface normal
-  - `Xchg_Shell::AddFace(face, orientation)`："XCHG_TRUE if face material and shell material are on same side"
-- **策略（无损映射，不丢弃任何 orientation 信息）**：
-  - **Face-Surface orientation 的处理**：
-    - PK `face_orient == true` → face normal = surface normal → 直接使用 surface，无需处理
-    - PK `face_orient == false` → face normal = -surface normal → 由于 ExchangeBase 要求 face normal = surface normal，**需要反转 surface**（翻转法向/反转参数化）然后设置到 Xchg_Face
-    - 反转 surface 后，face normal 方向不变，但 surface normal 方向翻转为与 face normal 一致
-  - **Shell-Face orientation 的映射**：
-    - PK shell_orient 描述的是 face normal 与 shell 内部的关系
-    - ExchangeBase shell_orient 描述的是 material side 的关系
-    - 由于反转 surface 改变了 Xchg_Face normal 的含义（现在 = 原 surface normal 的反向 = 原 face normal），shell-face orientation 需要综合 PK 的 shell_orient 和 face_orient 来计算：
-      `xchg_shell_orient = (pk_shell_orient == pk_face_orient)`
-    - 即：如果 PK 中 shell_orient 和 face_orient 同号 → XCHG_TRUE，异号 → XCHG_FALSE
-  - **Face 去重**：同一个 PK_FACE 在两个 shell 中出现（face 两侧的 region），需用 map 去重，确保只创建一个 Xchg_Face，但在两个 Xchg_Shell 中以不同 orientation 引用
+  - `Xchg_Face` normal **始终等于** surface normal（geometrical orientation always True）
+  - `Xchg_Shell::AddFace(face, orientation)`：`XCHG_TRUE` 表示 face material 与 shell material **同侧**
+    - 对 outer shell：material（solid）在 shell 内部，`XCHG_TRUE` → face normal **指向外部**
+- **Shell-Face orientation 的正确映射**：
+  - Xchg face normal = surface normal（固定）
+  - 当 `face_orient = true`：Xchg face normal = PK face normal
+  - 当 `face_orient = false`：Xchg face normal = -PK face normal
+  - Xchg `XCHG_TRUE` 要求 face normal 指向外部（对 outer shell），即 PK face normal 指向外部
+  - PK `orients[i] = false` → face normal 指向外部（`true` 为指向内部）
+  - **综合得出：`xchg_orient = (orients[i] != face_orient)`**
+    - `orients[i]=false, face_orient=true`：Xchg face normal 朝外 → `XCHG_TRUE` ✓
+    - `orients[i]=true, face_orient=false`：Xchg face normal = -PK face normal 朝外 → `XCHG_TRUE` ✓
+    - `orients[i]=true, face_orient=true`：Xchg face normal 朝内 → `XCHG_FALSE` ✓
+    - `orients[i]=false, face_orient=false`：Xchg face normal 朝内 → `XCHG_FALSE` ✓
 
 #### 1.4 关键 Parasolid API 函数（详细）
 

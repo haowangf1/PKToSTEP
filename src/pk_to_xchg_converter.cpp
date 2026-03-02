@@ -144,6 +144,8 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertRegions(PK_BODY_t pk_body, PK_BOD
     return STEP_OK;
 }
 
+
+
 // ---------------------------------------------------------------------------
 // Shell add strategy
 // ---------------------------------------------------------------------------
@@ -227,7 +229,7 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertShell(PK_SHELL_t pk_shell, Xchg_S
             if (rc != STEP_OK)
                 return rc;
 
-            bool same = (orients[i] == face_orient);
+            bool same = (orients[i] != face_orient);
             xchg_shell->AddFace(xchg_face, same ? XCHG_TRUE : XCHG_FALSE);
         }
     }
