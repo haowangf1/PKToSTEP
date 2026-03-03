@@ -1,0 +1,87 @@
+---
+description: PKToSTEP 项目背景、结构、构建方式和开发约定
+alwaysApply: true
+---
+
+# PKToSTEP 项目概述
+
+**目标**: 将 Parasolid (PK_BODY) 模型转换为 STEP 文件，两阶段架构：
+- **Step1 (已完成)**: PK_BODY → AMCAXExchangeBase 中间格式
+- **Step2 (计划中)**: AMCAXExchangeBase → STEP 文件导出
+
+## 核心文件
+
+| 文件 | 说明 |
+|------|------|
+| `src/pk_to_xchg_converter.cpp` | 核心转换逻辑（1103行） |
+| `include/pk_to_xchg_converter.hpp` | 转换器接口 |
+| `include/xchg_error_code.hpp` | 错误码定义 |
+| `src/main.cpp` | 测试入口，含往返测试和拓扑dump |
+| `resource/hollow_cube.step` | 主要测试模型（空心立方体） |
+
+## 构建规范
+
+```powershell
+# 始终在 build 目录下操作，先确认当前目录再执行
+cd d:\workspace\PKToSTEP\build
+cmake --build . --config Release
+```
+
+**重要**:
+- 执行构建命令前，必须先确认当前目录（`pwd`），避免在错误目录编译
+- **优先直接编译**，不要每次都运行 `conan install`
+- 只有编译失败且报缺少依赖时，才执行以下步骤补装依赖：
+  ```powershell
+  conan install .. --build=missing
+  cmake .. -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake
+  cmake --build . --config Release
+  ```
+
+## 依赖项（Conan 管理）
+
+- `pskernel/36.0`: Parasolid 内核
+- `amcax-exchange-base/0.0.1.121`: 中间格式库
+- `amcax-amxt_stp/0.0.1.39`: STEP 支持
+- `gtest/1.14.0`: 测试框架
+
+查找依赖库的头文件/API 时，优先去 Conan 缓存或 `build/` 下的 `conanbuildinfo` 查找，而非全局搜索。
+
+## PK API 文档
+
+- **文档服务器**: `http://192.168.180.50/docs/parasolid/`
+- **API 函数**: `http://192.168.180.50/docs/parasolid/headers/pk_<函数名>.html`
+- 可直接用 WebFetch 访问，无需 curl
+
+## 关键设计规则（不可违反）
+
+1. **Void Region**: `regions[0]` 是 infinite void region，Solid/General body 跳过它
+2. **General Body**: `general_c` (5605) 与 `solid_c` (5601) 同等处理
+3. **Face 方向**: `xchg_orient = (orients[i] != face_orient)`
+4. **实体去重**: 必须维护 `pk_face_map_`/`pk_edge_map_`/`pk_vertex_map_` 等缓存
+
+## 编码约定
+
+- 所有转换函数返回 `STEPExport_ErrorCode`
+- PK API 内存用 `PKMemGuard` RAII 管理
+- 日志通过回调 `log_callback_("message")`，禁止硬编码 cout/printf
+- 错误码向上传播
+
+## 测试方式
+
+往返测试：STEP → PK_BODY → Xchg_Body → PK_BODY → XMT 文件 → 可视化检查
+
+```powershell
+cd d:\workspace\PKToSTEP\build
+./bin/PKToSTEP ../resource/hollow_cube.step
+# 检查 ../xt/hollow_cube_roundtrip.xmt_txt
+```
+
+## 术语
+
+| 术语 | 含义 |
+|------|------|
+| PK | Parasolid Kernel |
+| Xchg | AMCAXExchangeBase 中间格式 |
+| Fin | PK 中 Edge 在 Loop 中的有向使用 |
+| Coedge | Xchg/STEP 中 Edge 在 Loop 中的有向使用 |
+| Roundtrip | 往返转换验证 |
