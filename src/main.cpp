@@ -52,7 +52,7 @@ int main(int argc, char* argv[])
         step_path = argv[1];
     } else {
         // Default to cube214.step
-        step_path = base + "resource/cube214.step";
+        step_path = base + "resource/23574_6cffa89a_0000.step";
     }
 
     // Extract filename stem for output path
