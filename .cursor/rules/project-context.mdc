@@ -85,3 +85,18 @@ cd d:\workspace\PKToSTEP\build
 | Fin | PK 中 Edge 在 Loop 中的有向使用 |
 | Coedge | Xchg/STEP 中 Edge 在 Loop 中的有向使用 |
 | Roundtrip | 往返转换验证 |
+
+## 待处理问题（需明确后返回确认）
+
+> 前提：需先明确 **STEP 导入**流程和 **ExchangeBase → PK 转换接口**的行为，再回来判断下列硬编码是否正确。
+
+- [ ] **TODO-1: Loop Orientation 硬编码**  
+  当前代码 `xchg_loop->SetOrientation(XCHG_TRUE)` 固定写死 `1`。  
+  观察到的规律：STEP 中 loop orient 跟随 face 的 `AddFace` orientation（`shellOrient=0` 时为 `0`，`shellOrient=1` 时为 `1`）。  
+  PK 的 loop 本身没有 orientation 属性，无法从 PK 还原此值。  
+  **待确认**：固定为 `1` 是否在所有情况下都正确，还是需要从 face orientation 推导？
+
+- [ ] **TODO-2: Coedge（Fin）方向硬编码**  
+  当前代码 `xchg_loop->AddCoedge(xchg_coedge, XCHG_TRUE)` 固定写死 `1`。  
+  规律与 loop orient 完全相同。PK 中 fin 和 loop 的关系也没有该方向属性，同样无法从 PK 还原。  
+  **待确认**：固定为 `1` 是否正确，还是需要结合 STEP 导入逻辑重新验证？

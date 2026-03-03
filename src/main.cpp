@@ -120,7 +120,7 @@ int main(int argc, char* argv[])
     // build/Debug/Debug/ -> ../../.. 即项目根目录
     base += "../../../";
 
-    std::string step_path = base + "resource/hollow_cube.step";
+    std::string step_path = base + "resource/cube214.step";
 
     // 从 step 文件路径提取不带扩展名的文件名，拼到同目录下加 _roundtrip 后缀
     // PK_PART_transmit 导出时会自动追加 .xmt_txt
