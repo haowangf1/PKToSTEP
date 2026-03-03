@@ -39,18 +39,24 @@ static bool TransmitBodyToXT(PK_BODY_t body, const char* output_path)
 
 int main(int argc, char* argv[])
 {
-    // 以 exe 所在目录为基准，向上找到项目根目录（exe 在 build/Debug/Debug/ 下，上三级是根目录）
+    // Calculate project root directory
     std::string exe_dir = argv[0];
     for (char& c : exe_dir) if (c == '\\') c = '/';
     auto last_slash = exe_dir.rfind('/');
     std::string base = (last_slash != std::string::npos) ? exe_dir.substr(0, last_slash + 1) : "./";
-    // build/Debug/Debug/ -> ../../.. 即项目根目录
     base += "../../../";
 
-    std::string step_path = base + "resource/cube214.step";
+    // Use command line argument for STEP file path
+    std::string step_path;
+    if (argc > 1) {
+        step_path = argv[1];
+    } else {
+        // Default to cube214.step
+        step_path = base + "resource/cube214.step";
+    }
 
-    // 从 step 文件路径提取不带扩展名的文件名，拼到同目录下加 _roundtrip 后缀
-    // PK_PART_transmit 导出时会自动追加 .xmt_txt
+    // Extract filename stem for output path
+    // PK_PART_transmit will automatically append .xmt_txt
     auto name_start = step_path.rfind('/');
     std::string stem = (name_start != std::string::npos)
                        ? step_path.substr(name_start + 1) : step_path;
