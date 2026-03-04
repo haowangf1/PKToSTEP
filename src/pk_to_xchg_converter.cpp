@@ -523,8 +523,12 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertEdge(PK_EDGE_t pk_edge, Xchg_Edge
         if (rc != STEP_OK)
             return rc;
         if (xchg_curve)
-            xchg_edge->SetGeom(xchg_curve);
-
+        {
+             xchg_edge->SetGeom(xchg_curve);
+        }else
+        {
+            Log("xchg_curve empty");
+        }
         PK_CURVE_t oriented_curve = PK_ENTITY_null;
         PK_LOGICAL_t orient = PK_LOGICAL_true;
         rc = PKErr(PK_EDGE_ask_oriented_curve(pk_edge, &oriented_curve, &orient),
@@ -534,6 +538,7 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertEdge(PK_EDGE_t pk_edge, Xchg_Edge
         xchg_edge->SetSameSense(orient ? XCHG_TRUE : XCHG_FALSE);
     } else {
         xchg_edge->SetSameSense(XCHG_TRUE);
+        Log("pk_curve empty");
     }
 
     bool degenerated = (pk_curve == PK_ENTITY_null) ||
@@ -684,6 +689,25 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertCurve(PK_CURVE_t pk_curve, Xchg_C
         rc = ConvertEllipseCurve(pk_curve, &result);
     else if (curve_class == PK_CLASS_bcurve)
         rc = ConvertNurbsCurve(pk_curve, &result);
+    else if (curve_class == PK_CLASS_icurve) {
+
+        // Intersection curves: approximate and recursively convert
+        PK_CURVE_make_approx_o_t opts;
+        PK_CURVE_make_approx_o_m(opts);
+        opts.tolerance = 1e-6;
+
+        PK_CURVE_t approx_curve = PK_ENTITY_null;
+        PK_INTERVAL_t interval = {0}, new_interval = {0};
+        PK_LOGICAL_t exact = PK_LOGICAL_false;
+        PK_ERROR_code_t err = PK_CURVE_make_approx(pk_curve, interval, &opts, &approx_curve, &new_interval, &exact);
+
+        if (err == PK_ERROR_no_errors && approx_curve != PK_ENTITY_null) {
+            rc = ConvertCurve(approx_curve, &result);
+        } else {
+            Log("Failed to approximate icurve");
+            return STEP_OK;
+        }
+    }
     else {
         Log("Unsupported curve class");
         return STEP_OK;
