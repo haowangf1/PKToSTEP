@@ -52,7 +52,7 @@ int main(int argc, char* argv[])
         step_path = argv[1];
     } else {
         // Default to cube214.step
-        step_path = base + "resource/99367_dc809a62_0000_0018.step";
+        step_path = base + "resource/30980_d0535092_0000_0124.step";
     }
 
     // Extract filename stem for output path
@@ -111,7 +111,8 @@ int main(int argc, char* argv[])
     Xchg_Size_t num_nodes = root->GetNumNodes();
     printf("[Info] Root component has %zu nodes.\n", num_nodes);
 
-    int body_count = 0;
+    std::vector<PK_BODY_t> pk_bodies;
+
     for (Xchg_Size_t i = 0; i < num_nodes; ++i) {
         Xchg_NodePtr node = root->GetNodeByIndex(i);
         if (!node || node->GetNodeType() != Xchg_Node::BodyType)
@@ -125,7 +126,7 @@ int main(int argc, char* argv[])
 
         printf("[Info] Found Body node at index %zu.\n", i);
 
-        // 4. Convert Xchg_Body -> PK_BODY via Xchg_Node::ConvertToPKBody
+        // 4. Convert Xchg_Body -> PK_BODY
         Xchg_Int32 convert_err = node->ConvertToPKBody();
         if (convert_err != 0) {
             fprintf(stderr, "[Error] ConvertToPKBody failed: %d\n", convert_err);
@@ -138,7 +139,7 @@ int main(int argc, char* argv[])
         }
         printf("[Info] Converted to PK_BODY tag: %d\n", pk_body_tag);
 
-        // 5. PK_BODY -> Xchg_Body (our converter) -> PK_BODY -> .x_t roundtrip
+        // 5. PK_BODY -> Xchg_Body (our converter)
         PK_BODY_t original_pk_body = static_cast<PK_BODY_t>(pk_body_tag);
 
         PKToXchgConverter converter;
@@ -154,10 +155,11 @@ int main(int argc, char* argv[])
         }
         printf("[Info] PK_BODY -> Xchg_Body succeeded.\n");
 
-        // Dump both bodies for human-friendly comparison
+         // Dump both bodies for human-friendly comparison
         XchgTopoCompare::DumpBody(xchg_body, "STEP->Xchg (REF)");
         XchgTopoCompare::DumpBody(roundtrip_xchg_body, "PK->Xchg (OURS)");
 
+        // 6. Xchg_Body -> PK_BODY roundtrip
         Xchg_MainDocPtr rt_doc = Xchg_MainDoc::Create();
         Xchg_ComponentPtr rt_comp = rt_doc->CreateComponent(
             L"roundtrip", L"roundtrip", Xchg_Component::ComponentInternal);
@@ -176,22 +178,27 @@ int main(int argc, char* argv[])
         }
         printf("[Info] Xchg_Body -> PK_BODY roundtrip succeeded, new tag: %d\n", rt_pk_body);
 
-        // 6. Transmit roundtrip PK_BODY to .x_t file
-        std::string out = xt_path;
-        if (body_count > 0) {
-            out = xt_path + "." + std::to_string(body_count);
-        }
-
-        if (TransmitBodyToXT(static_cast<PK_BODY_t>(rt_pk_body), out.c_str())) {
-            printf("[Info] Written to: %s\n", out.c_str());
-        }
-        ++body_count;
+        pk_bodies.push_back(static_cast<PK_BODY_t>(rt_pk_body));
     }
+
+    int body_count = pk_bodies.size();
 
     if (body_count == 0) {
         fprintf(stderr, "[Warn] No body nodes found in root component.\n");
     } else {
         printf("[Info] Total %d bodies converted.\n", body_count);
+
+        // Export all bodies to single xt file
+        PK_PART_transmit_o_t transmit_opts;
+        PK_PART_transmit_o_m(transmit_opts);
+        transmit_opts.transmit_format = PK_transmit_format_text_c;
+
+        PK_ERROR_code_t err = PK_PART_transmit(body_count, pk_bodies.data(), xt_path.c_str(), &transmit_opts);
+        if (err != PK_ERROR_no_errors) {
+            fprintf(stderr, "[Error] PK_PART_transmit failed: %d\n", err);
+        } else {
+            printf("[Info] Written %d bodies to: %s.x_t\n", body_count, xt_path.c_str());
+        }
     }
 
     // 7. Cleanup
