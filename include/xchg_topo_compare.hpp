@@ -242,41 +242,7 @@ inline XchgBodyData Collect(const Xchg_BodyPtr& body, const char* label)
     return bd;
 }
 
-// Dump a single body's topology in flat listing form.
-inline void Dump(const XchgBodyData& bd)
-{
-    printf("\n===== Xchg_Body Topo: %s =====\n", bd.label.c_str());
-    printf("Lumps: %zu\n", bd.lumps.size());
-    for (size_t li = 0; li < bd.lumps.size(); ++li) {
-        const auto& ld = bd.lumps[li];
-        printf("Lump[%zu]: shells=%zu\n", li, ld.shells.size());
-        for (size_t si = 0; si < ld.shells.size(); ++si) {
-            const auto& sd = ld.shells[si];
-            printf("  Shell[%zu]: faces=%zu closed=%d outer=%d\n",
-                   si, sd.faces.size(), sd.closed, sd.outer);
-            for (size_t fi = 0; fi < sd.faces.size(); ++fi) {
-                const auto& fd = sd.faces[fi];
-                printf("    Face[%zu]: shellOrient=%d loops=%d surfType=%s\n",
-                       fi, fd.shellOrient, fd.nLoops, fd.surfType.c_str());
-                printf("      surfParams: %s\n", fd.surfParams.c_str());
-                for (size_t lli = 0; lli < fd.loops.size(); ++lli) {
-                    const auto& lod = fd.loops[lli];
-                    printf("      Loop[%zu]: outer=%d orient=%d coedges=%zu\n",
-                           lli, lod.outer, lod.orient, lod.coedges.size());
-                    for (size_t ci = 0; ci < lod.coedges.size(); ++ci) {
-                        const auto& ced = lod.coedges[ci];
-                        printf("        CE[%zu]: inLoop=%d ceOrient=%d sameSense=%d "
-                               "crv=%-8s uv=%-8s  %s -> %s\n",
-                               ci, ced.inLoop, ced.ceOrient, ced.sameSense,
-                               ced.curvType.c_str(), ced.uvcrvType.c_str(),
-                               ced.startV.c_str(), ced.endV.c_str());
-                    }
-                }
-            }
-        }
-    }
-    printf("===== End: %s =====\n\n", bd.label.c_str());
-}
+
 
 // Print side-by-side diff table; differences are marked with <<<DIFF>>>.
 inline void Compare(const XchgBodyData& ref, const XchgBodyData& ours)
@@ -395,6 +361,175 @@ inline void Compare(const Xchg_BodyPtr& refBody,  const char* refLabel,
                     const Xchg_BodyPtr& oursBody, const char* oursLabel)
 {
     Compare(Collect(refBody, refLabel), Collect(oursBody, oursLabel));
+}
+
+
+
+// Dump a single body's topology in a human-friendly hierarchical format.
+inline void DumpBody(const Xchg_BodyPtr& body, const char* label)
+{
+    using namespace detail;
+
+    printf("\n");
+    printf("================================================================================\n");
+    printf("  Xchg_Body Structure: %s\n", label);
+    printf("================================================================================\n");
+
+    // Count topology entities
+    int totalLumps = 0, totalShells = 0, totalFaces = 0;
+    int totalLoops = 0, totalCoedges = 0;
+
+    Xchg_Size_t nLumps = body->GetNumLumps();
+    totalLumps = (int)nLumps;
+
+    for (Xchg_Size_t li = 0; li < nLumps; ++li) {
+        Xchg_LumpPtr lump;
+        body->GetLump(li, lump);
+        Xchg_Size_t nShells = lump->GetNumShells();
+        totalShells += (int)nShells;
+
+        for (Xchg_Size_t si = 0; si < nShells; ++si) {
+            Xchg_ShellPtr shell;
+            lump->GetShell(si, shell);
+            Xchg_Size_t nFaces = shell->GetNumFaces(DtkFaceType_Bounded);
+            totalFaces += (int)nFaces;
+
+            for (Xchg_Size_t fi = 0; fi < nFaces; ++fi) {
+                Xchg_FacePtr face;
+                Xchg_bool faceOrient;
+                shell->GetFace(fi, face, faceOrient);
+                Xchg_Size_t nLoops = face->GetNumLoops();
+                totalLoops += (int)nLoops;
+
+                for (Xchg_Size_t lli = 0; lli < nLoops; ++lli) {
+                    Xchg_LoopPtr loop;
+                    face->GetLoop(lli, loop);
+                    Xchg_Size_t nCE = loop->GetNumCoedges();
+                    totalCoedges += (int)nCE;
+                }
+            }
+        }
+    }
+
+    // Print topology statistics
+    printf("\n[Topology Statistics]\n");
+    printf("  Lumps    : %d\n", totalLumps);
+    printf("  Shells   : %d\n", totalShells);
+    printf("  Faces    : %d\n", totalFaces);
+    printf("  Loops    : %d\n", totalLoops);
+    printf("  Coedges  : %d\n", totalCoedges);
+
+    // Print hierarchical structure
+    printf("\n[Hierarchical Structure]\n");
+
+    for (Xchg_Size_t li = 0; li < nLumps; ++li) {
+        Xchg_LumpPtr lump;
+        body->GetLump(li, lump);
+        printf("\n  Lump[%zu]\n", li);
+
+        Xchg_Size_t nShells = lump->GetNumShells();
+        for (Xchg_Size_t si = 0; si < nShells; ++si) {
+            Xchg_ShellPtr shell;
+            lump->GetShell(si, shell);
+
+            printf("    |\n");
+            printf("    +-- Shell[%zu]  [closed=%d, outer=%d]\n",
+                   si, (int)shell->IsClosed(), (int)shell->IsOuter());
+
+            Xchg_Size_t nFaces = shell->GetNumFaces(DtkFaceType_Bounded);
+            for (Xchg_Size_t fi = 0; fi < nFaces; ++fi) {
+                Xchg_FacePtr face;
+                Xchg_bool faceOrient;
+                shell->GetFace(fi, face, faceOrient);
+
+                Xchg_SurfacePtr surf = face->GetGeom();
+                std::string surfInfo = surf ? SurfaceTypeStr(surf->GetType()) : "(no surf)";
+
+                printf("    |   |\n");
+                printf("    |   +-- Face[%zu]  [shellOrient=%d, surf=%s]\n",
+                       fi, (int)faceOrient, surfInfo.c_str());
+
+                // Print geometry parameters
+                if (surf) {
+                    printf("    |   |      Geom: %s\n", SurfaceParams(surf).c_str());
+                }
+
+                Xchg_Size_t nLoops = face->GetNumLoops();
+                for (Xchg_Size_t lli = 0; lli < nLoops; ++lli) {
+                    Xchg_LoopPtr loop;
+                    face->GetLoop(lli, loop);
+
+                    printf("    |   |   |\n");
+                    printf("    |   |   +-- Loop[%zu]  [outer=%d, orient=%d, coedges=%zu]\n",
+                           lli, (int)loop->IsOuter(), (int)loop->GetOrientation(),
+                           loop->GetNumCoedges());
+
+                    Xchg_Size_t nCE = loop->GetNumCoedges();
+                    for (Xchg_Size_t ci = 0; ci < nCE; ++ci) {
+                        Xchg_CoedgePtr coedge;
+                        Xchg_bool coedgeOrient;
+                        loop->GetCoedge(ci, coedge, coedgeOrient);
+
+                        Xchg_EdgePtr edge;
+                        coedge->GetEdge(edge);
+
+                        std::string edgeInfo = "(no edge)";
+                        if (edge) {
+                            Xchg_VertexPtr sv, ev;
+                            edge->GetStartVertex(sv);
+                            edge->GetEndVertex(ev);
+                            Xchg_CurvePtr crv = edge->GetGeom();
+                            std::string crvType = crv ? CurveTypeStr(crv->GetType()) : "-";
+                            edgeInfo = crvType + " " + VertexCoord(sv) + " -> " + VertexCoord(ev);
+                        }
+
+                        printf("    |   |   |   |\n");
+                        printf("    |   |   |   +-- Coedge[%zu]  [inLoop=%d, orient=%d]\n",
+                               ci, (int)coedgeOrient, (int)coedge->GetOrientation());
+                        printf("    |   |   |   |      Edge: %s\n", edgeInfo.c_str());
+                    }
+                }
+            }
+        }
+    }
+
+    printf("\n================================================================================\n\n");
+}
+
+// Dump a single body's topology in flat listing form.
+inline void Dump(const XchgBodyData& bd)
+{
+    printf("\n===== Xchg_Body Topo: %s =====\n", bd.label.c_str());
+    printf("Lumps: %zu\n", bd.lumps.size());
+    for (size_t li = 0; li < bd.lumps.size(); ++li) {
+        const auto& ld = bd.lumps[li];
+        printf("Lump[%zu]: shells=%zu\n", li, ld.shells.size());
+        for (size_t si = 0; si < ld.shells.size(); ++si) {
+            const auto& sd = ld.shells[si];
+            printf("  Shell[%zu]: faces=%zu closed=%d outer=%d\n",
+                   si, sd.faces.size(), sd.closed, sd.outer);
+            for (size_t fi = 0; fi < sd.faces.size(); ++fi) {
+                const auto& fd = sd.faces[fi];
+                printf("    Face[%zu]: shellOrient=%d loops=%d surfType=%s\n",
+                       fi, fd.shellOrient, fd.nLoops, fd.surfType.c_str());
+                printf("      surfParams: %s\n", fd.surfParams.c_str());
+                for (size_t lli = 0; lli < fd.loops.size(); ++lli) {
+                    const auto& lod = fd.loops[lli];
+                    printf("      Loop[%zu]: outer=%d orient=%d coedges=%zu\n",
+                           lli, lod.outer, lod.orient, lod.coedges.size());
+                    for (size_t ci = 0; ci < lod.coedges.size(); ++ci) {
+                        const auto& ced = lod.coedges[ci];
+                        printf("        CE[%zu]: inLoop=%d ceOrient=%d sameSense=%d "
+                               "crv=%-8s uv=%-8s  %s -> %s\n",
+                               ci, ced.inLoop, ced.ceOrient, ced.sameSense,
+                               ced.curvType.c_str(), ced.uvcrvType.c_str(),
+                               ced.startV.c_str(), ced.endV.c_str());
+                    }
+                }
+            }
+        }
+    }
+    printf("===== End: %s =====\n\n", bd.label.c_str());
 }
 
 } // namespace XchgTopoCompare

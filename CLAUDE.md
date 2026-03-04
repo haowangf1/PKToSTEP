@@ -4,6 +4,36 @@
 
 本文件为 Claude Code (claude.ai/code) 在此代码库中工作时提供指导。
 
+## 开发规则
+
+### Parasolid API 调用规范
+
+**关键规则**：调用任何 PK API 前，必须先查阅头文件确认 API 存在和签名正确。
+
+**PK 头文件位置**：
+```
+~/.conan2/p/psker*/p/include/parasolid_kernel.h
+```
+
+**查找方法**：
+```bash
+# 搜索 API 函数
+grep -i "PK_CURVE_make" ~/.conan2/p/psker*/p/include/parasolid_kernel.h
+
+# 查看函数签名和参数
+grep -A 10 "PK_CURVE_make_approx" ~/.conan2/p/psker*/p/include/parasolid_kernel.h
+```
+
+**禁止**：
+- ❌ 凭记忆或猜测编写 PK API 调用
+- ❌ 编造不存在的 API 函数
+- ❌ 假设 API 签名
+
+**必须**：
+- ✅ 先查头文件，确认 API 存在
+- ✅ 复制正确的函数签名和参数结构
+- ✅ 使用正确的选项宏初始化（如 `PK_CURVE_make_approx_o_m`）
+
 ## 项目概述
 
 PKToSTEP 是一个 Parasolid PK_BODY 到 STEP 文件的转换器。它通过中间格式 Xchg (AMCAXExchangeBase) 将 Parasolid 几何模型转换为 STEP 格式。
@@ -193,3 +223,6 @@ cp ~/.conan2/p/psker*/p/bin/*.dll build/Debug/Debug/
 
 - `/build-debug` - 配置和构建 Debug 版本，自动管理依赖
 - `/check-pk-api` - 从内部服务器查询 Parasolid API 文档
+
+## 测试step资源文件地址
+- "D:\workspace\resource\r1.0.1"
