@@ -14,7 +14,8 @@
       "Bash(./build/Debug/PKToSTEP.exe:*)",
       "Bash(rm:*)",
       "Bash(/d/workspace/PKToSTEP/build/Debug/PKToSTEP.exe:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(python:*)"
     ]
   }
 }

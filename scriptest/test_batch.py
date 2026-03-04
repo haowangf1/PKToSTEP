@@ -13,7 +13,7 @@ from datetime import datetime
 
 # Configuration
 TEST_RESOURCE_DIR = r"D:\workspace\resource\r1.0.1"
-EXE_PATH = r"build\Debug\Debug\PKToSTEP.exe"
+EXE_PATH = r"..\build\Debug\Debug\PKToSTEP.exe"
 RESULT_FILE = "test_results.txt"
 
 def find_step_files(directory):
