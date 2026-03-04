@@ -16,7 +16,8 @@
       "Bash(/d/workspace/PKToSTEP/build/Debug/PKToSTEP.exe:*)",
       "Bash(cp:*)",
       "Bash(python:*)",
-      "Bash(./test_roundtrip.exe:*)"
+      "Bash(./test_roundtrip.exe:*)",
+      "Bash(./build/Debug/Debug/PKToSTEP.exe:*)"
     ]
   }
 }

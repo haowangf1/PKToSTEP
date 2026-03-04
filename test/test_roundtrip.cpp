@@ -130,6 +130,34 @@ protected:
         return nullptr;
     }
 
+    std::vector<Xchg_BodyPtr> LoadStepAndConvertAll(const std::string& step_file) {
+        std::vector<Xchg_BodyPtr> bodies;
+        AMXT_STP_CTX_context_p ctx = nullptr;
+        AMXT_STP_ERROR_code_t err = AMXT_STP_CTX_create(&ctx);
+        if (err != AMXT_STP_ERROR_no_errors) return bodies;
+
+        AMXT_STP_read_o_t read_opts;
+        AMXT_STP_read_o_m(read_opts);
+
+        Xchg_MainDocPtr doc = Xchg_MainDoc::Create();
+        err = AMXT_STP_read(ctx, step_file.c_str(), &read_opts, &doc);
+        AMXT_STP_CTX_destory(ctx);
+
+        if (err != AMXT_STP_ERROR_no_errors) return bodies;
+
+        auto root = doc->RootComponent();
+        if (!root) return bodies;
+
+        for (Xchg_Size_t i = 0; i < root->GetNumNodes(); ++i) {
+            auto node = root->GetNodeByIndex(i);
+            if (node && node->GetNodeType() == Xchg_Node::BodyType) {
+                auto body = node->GetBodyPtr();
+                if (body) bodies.push_back(body);
+            }
+        }
+        return bodies;
+    }
+
     Xchg_BodyPtr RoundtripConvert(const Xchg_BodyPtr& ref_body) {
         Xchg_MainDocPtr doc = Xchg_MainDoc::Create();
         Xchg_ComponentPtr comp = doc->CreateComponent(L"test", L"test", Xchg_Component::ComponentInternal);
@@ -196,6 +224,51 @@ TEST_F(RoundtripTest, HollowCube) {
     if (rt_stats.outer_loops != ref_stats.outer_loops) {
         printf("Warning: outer_loops differ: %d vs %d\n", rt_stats.outer_loops, ref_stats.outer_loops);
     }
+}
+
+TEST_F(RoundtripTest, MultiBodies) {
+    auto ref_bodies = LoadStepAndConvertAll(PROJECT_ROOT_DIR "/resource/30980_d0535092_0000_0124.step");
+    ASSERT_GT(ref_bodies.size(), 0);
+
+    TopoStats total_ref, total_rt;
+
+    for (const auto& ref : ref_bodies) {
+        auto rt = RoundtripConvert(ref);
+        ASSERT_TRUE(rt != nullptr);
+
+        auto ref_stats = CollectStats(ref);
+        auto rt_stats = CollectStats(rt);
+
+        total_ref.bodies += ref_stats.bodies;
+        total_ref.lumps += ref_stats.lumps;
+        total_ref.shells += ref_stats.shells;
+        total_ref.faces += ref_stats.faces;
+        total_ref.loops += ref_stats.loops;
+        total_ref.coedges += ref_stats.coedges;
+        total_ref.edges += ref_stats.edges;
+        total_ref.faces_with_geom += ref_stats.faces_with_geom;
+        total_ref.edges_with_geom += ref_stats.edges_with_geom;
+
+        total_rt.bodies += rt_stats.bodies;
+        total_rt.lumps += rt_stats.lumps;
+        total_rt.shells += rt_stats.shells;
+        total_rt.faces += rt_stats.faces;
+        total_rt.loops += rt_stats.loops;
+        total_rt.coedges += rt_stats.coedges;
+        total_rt.edges += rt_stats.edges;
+        total_rt.faces_with_geom += rt_stats.faces_with_geom;
+        total_rt.edges_with_geom += rt_stats.edges_with_geom;
+    }
+
+    EXPECT_EQ(total_rt.bodies, total_ref.bodies);
+    EXPECT_EQ(total_rt.lumps, total_ref.lumps);
+    EXPECT_EQ(total_rt.shells, total_ref.shells);
+    EXPECT_EQ(total_rt.faces, total_ref.faces);
+    EXPECT_EQ(total_rt.loops, total_ref.loops);
+    EXPECT_EQ(total_rt.coedges, total_ref.coedges);
+    EXPECT_EQ(total_rt.edges, total_ref.edges);
+    EXPECT_GT(total_rt.faces_with_geom, 0);
+    EXPECT_GT(total_rt.edges_with_geom, 0);
 }
 
 TEST_F(RoundtripTest, Cylinder214) {
