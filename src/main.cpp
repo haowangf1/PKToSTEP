@@ -52,7 +52,7 @@ int main(int argc, char* argv[])
         step_path = argv[1];
     } else {
         // Default to cube214.step
-        step_path = base + "resource/30980_d0535092_0000_0124.step";
+        step_path = base + "resource/hollow_cube.step";
     }
 
     // Extract filename stem for output path
@@ -155,9 +155,11 @@ int main(int argc, char* argv[])
         }
         printf("[Info] PK_BODY -> Xchg_Body succeeded.\n");
 
+#if 0
          // Dump both bodies for human-friendly comparison
         XchgTopoCompare::DumpBody(xchg_body, "STEP->Xchg (REF)");
         XchgTopoCompare::DumpBody(roundtrip_xchg_body, "PK->Xchg (OURS)");
+#endif
 
         // 6. Xchg_Body -> PK_BODY roundtrip
         Xchg_MainDocPtr rt_doc = Xchg_MainDoc::Create();
