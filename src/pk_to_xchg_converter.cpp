@@ -691,20 +691,30 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertCurve(PK_CURVE_t pk_curve, Xchg_C
         rc = ConvertNurbsCurve(pk_curve, &result);
     else if (curve_class == PK_CLASS_icurve) {
 
-        // Intersection curves: approximate and recursively convert
+        // 先查询 icurve 的实际参数范围
+        PK_INTERVAL_t interval;
+        PK_ERROR_code_t err = PK_CURVE_ask_interval(pk_curve, &interval);
+        if (err != PK_ERROR_no_errors) {
+            Log("Failed to query icurve interval");
+            return STEP_OK;
+        }
+
         PK_CURVE_make_approx_o_t opts;
         PK_CURVE_make_approx_o_m(opts);
-        opts.tolerance = 1e-6;
+        opts.tolerance = 1e-9;
 
         PK_CURVE_t approx_curve = PK_ENTITY_null;
-        PK_INTERVAL_t interval = {0}, new_interval = {0};
+        PK_INTERVAL_t new_interval = {0};
         PK_LOGICAL_t exact = PK_LOGICAL_false;
-        PK_ERROR_code_t err = PK_CURVE_make_approx(pk_curve, interval, &opts, &approx_curve, &new_interval, &exact);
+        err = PK_CURVE_make_approx(pk_curve, interval, &opts, &approx_curve, &new_interval, &exact);
 
         if (err == PK_ERROR_no_errors && approx_curve != PK_ENTITY_null) {
             rc = ConvertCurve(approx_curve, &result);
         } else {
-            Log("Failed to approximate icurve");
+            char buf[256];
+            snprintf(buf, sizeof(buf), "Failed to approximate icurve (error %d, interval [%g, %g])",
+                     err, interval.value[0], interval.value[1]);
+            Log(buf);
             return STEP_OK;
         }
     }
