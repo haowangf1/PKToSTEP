@@ -1,0 +1,14 @@
+PKToSTEP Batch Test Results
+Test Time: 2026-03-05 17:18:38
+Executable: ..\build\Debug\Debug\PKToSTEP.exe
+Test Directory: D:\workspace\resource\r1.0.1failed
+Total Files: 25
+================================================================================
+
+
+================================================================================
+Summary:
+  Total: 25
+  Passed: 25
+  Failed: 0
+  Success Rate: 100.00%

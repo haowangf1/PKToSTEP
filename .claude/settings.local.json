@@ -20,7 +20,11 @@
       "Bash(./build/Debug/Debug/PKToSTEP.exe:*)",
       "WebFetch(domain:192.168.180.50)",
       "Bash(curl:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(while read file)",
+      "Bash(do cp \"$file\" ../r1.0.1failed/)",
+      "Bash(echo \"Copied: $file\")",
+      "Bash(done)"
     ]
   }
 }

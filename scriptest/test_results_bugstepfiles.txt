@@ -1,73 +1,18 @@
 PKToSTEP Batch Test Results
-Test Time: 2026-03-05 10:39:02
+Test Time: 2026-03-05 17:19:37
 Executable: ..\build\Debug\Debug\PKToSTEP.exe
 Test Directory: D:\workspace\resource\bugstepfiles
 Total Files: 368
 ================================================================================
 
-00000311_3062bccff48e47a2b9de05e3_step_006.step	3221225477
-001.brep.step	3221225477
-001.step	3221225477
-0066906.step	3221225477
-11184_2.stp	3221225477
-11584_2.stp	3221225477
-11702.stp	3221225477
-264g-airplane214.step	3221225477
-5339C00115G70.stp	3221225477
-5361C02007G70.stp	3221225477
-6780.stp	3221225477
-717 air v10 - Copy.step	3221225477
-717 air v10.step	3221225477
-757 vi 1 v7.step	3221225477
-83-1.stp	3221225477
-917_fusee203.step	3221225477
-9379.STEP	3221225477
-9943.step	3221225477
-A319(214).step	3221225477
-A340 Swiss Livery.step	3221225477
-A340.step	3221225477
-AXNP65_endschalter.part.step	3221225477
-CT-3000000BA------FRAME-SEED-PART-SIN---------3D-P0X-120528-LC.stp	3221225477
-Chester.stp	3221225477
-Compressor gc.STEP	3221225477
-Differential214.step	3221225477
-Electra-car-mm-4-8.step	3221225477
-FUEL TANK (1).step	3221225477
-Garrett GTCP85-98D1.stp	3221225477
-HK-450-scale.step	3221225477
-Hydrone Yellow.step	3221225477
-Mikoyan kIG 29 v2.step	3221225477
-OFFSET_SURFACE.step	3221225477
-OFFSET_SURFACE2.step	3221225477
-SMF008_01.stp	3221225477
-SMF008_lite.stp	3221225477
-Unnamed-scale2.step	3221225477
-Xenos_5 CNC Machine - Reduced Parts.step	-1
+Garrett GTCP85-98D1.stp	-1
 a38o with gears v2.step	3221225477
-aa153.step	3221225477
-aa341.step	3
-backlight.step	-1
-base-3solid.step	3221225477
-guandao.step	3221225477
-guandao.stp	3221225477
-guandao_water.step	3221225477
-impeller.step	3221225477
-impeller214.step	3221225477
-iron_man_mask_edit.step	3221225477
-lookdownmirror.step	3221225477
-model1.step	3221225477
-motor.step	3221225477
-pDifferentia214.step	3221225477
-prototype mpx 350 CBT.step	3221225477
-rim.step	3221225477
-spring.step	3221225477
-testnut.step	3221225477
-warplane.step	3221225477
+aa341.step	-1
 案例1-小滑块-242-test6.stp	3221225477
 
 ================================================================================
 Summary:
   Total: 368
-  Passed: 309
-  Failed: 59
-  Success Rate: 83.97%
+  Passed: 364
+  Failed: 4
+  Success Rate: 98.91%
