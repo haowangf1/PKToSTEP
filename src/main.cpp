@@ -22,20 +22,6 @@
 #include <set>
 #include <map>
 
-static bool TransmitBodyToXT(PK_BODY_t body, const char* output_path)
-{
-    PK_PART_transmit_o_t transmit_opts;
-    PK_PART_transmit_o_m(transmit_opts);
-    transmit_opts.transmit_format = PK_transmit_format_text_c;
-
-    PK_BODY_t parts[] = { body };
-    PK_ERROR_code_t err = PK_PART_transmit(1, parts, output_path, &transmit_opts);
-    if (err != PK_ERROR_no_errors) {
-        fprintf(stderr, "[Error] PK_PART_transmit failed: %d\n", err);
-        return false;
-    }
-    return true;
-}
 
 int main(int argc, char* argv[])
 {
