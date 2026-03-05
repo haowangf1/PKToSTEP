@@ -184,6 +184,7 @@ finalOrientation = !(inLoop ^ coedgeOrientation);
 
 - `docs/step_to_x_to_pk_process.md` - STEP↔Xchg↔PK 转换规则的详细分析
 - `docs/implementation_issues.md` - PK→Xchg 转换中的已知问题和解决方案
+- `docs/icurve_conversion_issue.md` - icurve 转换问题记录（未解决）
 
 ## 测试
 
