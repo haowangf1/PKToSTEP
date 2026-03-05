@@ -76,6 +76,7 @@ private:
     STEPExport_ErrorCode ConvertCircleCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve);
     STEPExport_ErrorCode ConvertEllipseCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve);
     STEPExport_ErrorCode ConvertNurbsCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve);
+    STEPExport_ErrorCode ConvertPolylineCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve);
 
     // shell type helper
     void AddShellToLump(const Xchg_ShellPtr& shell, const Xchg_LumpPtr& lump,

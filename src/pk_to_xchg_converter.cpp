@@ -689,6 +689,8 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertCurve(PK_CURVE_t pk_curve, Xchg_C
         rc = ConvertEllipseCurve(pk_curve, &result);
     else if (curve_class == PK_CLASS_bcurve)
         rc = ConvertNurbsCurve(pk_curve, &result);
+    else if (curve_class == PK_CLASS_pline)
+        rc = ConvertPolylineCurve(pk_curve, &result);
     else if (curve_class == PK_CLASS_icurve) {
 
         // 先查询 icurve 的实际参数范围
@@ -1133,5 +1135,30 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertNurbsCurve(PK_CURVE_t pk_curve, X
     if (sf.knot_mult) PK_MEMORY_free(sf.knot_mult);
 
     *curve = Xchg_CurvePtr(nurbs.get());
+    return STEP_OK;
+}
+
+STEPExport_ErrorCode PKToXchgConverter::ConvertPolylineCurve(PK_CURVE_t pk_curve, Xchg_CurvePtr* curve)
+{
+    *curve = nullptr;
+
+    PK_PLINE_sf_t sf;
+    STEPExport_ErrorCode rc = PKErr(PK_PLINE_ask(pk_curve, &sf), "PK_PLINE_ask");
+    if (rc != STEP_OK)
+        return rc;
+
+    Xchg_vector<Xchg_pnt> points;
+    for (int i = 0; i < sf.n_positions; ++i) {
+        points.push_back(Xchg_pnt(
+            sf.positions[i].coord[0],
+            sf.positions[i].coord[1],
+            sf.positions[i].coord[2]));
+    }
+
+    if (sf.positions)
+        PK_MEMORY_free(sf.positions);
+
+    Xchg_PolylinePtr pline = Xchg_Polyline::Create(points);
+    *curve = Xchg_CurvePtr(pline.get());
     return STEP_OK;
 }
