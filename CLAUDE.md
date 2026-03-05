@@ -227,3 +227,33 @@ cp ~/.conan2/p/psker*/p/bin/*.dll build/Debug/Debug/
 
 ## 测试step资源文件地址
 - "D:\workspace\resource\r1.0.1"
+### Tolerant Edge 和 SPcurve 处理（重要）
+
+**PK 中的 Tolerant Edge**：
+- Tolerant edge 本身没有 3D curve（`PK_EDGE_ask_curve` 返回 null）
+- 其几何信息存储在使用该 edge 的 fin 中，以 SPcurve（surface parameter curve）形式表达
+- SPcurve 是 2D bcurve 嵌入在 surface 的参数空间 (u,v) 中
+
+**转换策略**：
+- 在 `ConvertFin()` 中检查 fin 是否有 curve（`PK_FIN_ask_oriented_curve`）
+- 如果 fin 有 curve，说明对应的 edge 是 tolerant edge（没有 3D curve）
+- 将 fin 的 SPcurve 转换为 3D basic curve，并添加到 Xchg edge 中
+- 这样确保 Xchg edge 始终有几何信息
+
+**实现位置**：`ConvertFin()` 方法
+
+**关键逻辑**：
+```cpp
+// 在 ConvertFin 中
+PK_CURVE_t fin_curve = PK_ENTITY_null;
+PK_FIN_ask_oriented_curve(pk_fin, &fin_curve, &fin_orient);
+
+if (fin_curve != PK_ENTITY_null) {
+    // fin 有 curve，说明 edge 是 tolerant edge
+    // 将 SPcurve 转换为 3D curve 并设置到 edge
+    Xchg_CurvePtr curve_3d;
+    ConvertCurve(fin_curve, &curve_3d);  // SPcurve → 3D curve
+    if (curve_3d && xchg_edge)
+        xchg_edge->SetGeom(curve_3d);
+}
+```
