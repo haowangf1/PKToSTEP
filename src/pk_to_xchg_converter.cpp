@@ -432,6 +432,7 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertLoop(PK_LOOP_t pk_loop, Xchg_Loop
 
 STEPExport_ErrorCode PKToXchgConverter::ConvertFin(PK_FIN_t pk_fin, Xchg_CoedgePtr* coedge)
 {
+    //tolerant edge，edge本身的curve为空，在其fin中分别存储对应的SPcurve
     *coedge = nullptr;
 
     Xchg_CoedgePtr xchg_coedge = Xchg_Coedge::Create(current_body_);
@@ -470,6 +471,7 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertFin(PK_FIN_t pk_fin, Xchg_CoedgeP
             return rc;
         if (uv_curve)
             xchg_coedge->SetGeom(uv_curve);
+            xchg_edge->SetGeom(uv_curve);
     }
 
     *coedge = xchg_coedge;
@@ -482,6 +484,7 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertFin(PK_FIN_t pk_fin, Xchg_CoedgeP
 
 STEPExport_ErrorCode PKToXchgConverter::ConvertEdge(PK_EDGE_t pk_edge, Xchg_EdgePtr* edge)
 {
+
     *edge = nullptr;
 
     auto it = pk_edge_map_.find(pk_edge);
@@ -691,7 +694,7 @@ STEPExport_ErrorCode PKToXchgConverter::ConvertCurve(PK_CURVE_t pk_curve, Xchg_C
         rc = ConvertNurbsCurve(pk_curve, &result);
     else if (curve_class == PK_CLASS_pline)
         rc = ConvertPolylineCurve(pk_curve, &result);
-    else if (curve_class == PK_CLASS_icurve) {
+    else if (curve_class == PK_CLASS_icurve || curve_class == PK_CLASS_spcurve ) {
 
         // 先查询 icurve 的实际参数范围
         PK_INTERVAL_t interval;
