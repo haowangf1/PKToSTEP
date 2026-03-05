@@ -12,7 +12,7 @@ from pathlib import Path
 from datetime import datetime
 
 # Configuration
-TEST_RESOURCE_DIR = r"D:\workspace\resource\r1.0.1"
+TEST_RESOURCE_DIR = r"D:\workspace\resource\bugstepfiles"
 EXE_PATH = r"..\build\Debug\Debug\PKToSTEP.exe"
 RESULT_FILE = "test_results.txt"
 
