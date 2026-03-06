@@ -16,12 +16,41 @@
 #include "topology/xchg_vertex.hpp"
 
 #include "xchg_topo_compare.hpp"
-
+#include "../include/export_step.hpp"
 #include <cstdio>
 #include <string>
 #include <set>
 #include <map>
 
+void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
+{
+    // 从输入路径提取文件名（不含扩展名）
+    auto name_start = input_step_path.rfind('/');
+    if (name_start == std::string::npos) {
+        name_start = input_step_path.rfind('\\');
+    }
+    std::string filename = (name_start != std::string::npos)
+                          ? input_step_path.substr(name_start + 1) : input_step_path;
+
+    // 去掉扩展名
+    auto ext_pos = filename.rfind('.');
+    std::string stem = (ext_pos != std::string::npos) ? filename.substr(0, ext_pos) : filename;
+
+    // 生成输出文件名：原文件名 + _export.step
+    std::string output_path = stem + "_export.step";
+
+    printf("[Info] Exporting MainDoc to: %s\n", output_path.c_str());
+
+    AMXT_STP_export_o_t options;
+    AMXT_STP_export_o_m(options);
+
+    AMXT_STP_ERROR_code_t err = AMXT_STP_export(mainDoc, &options, output_path);
+    if (err != AMXT_STP_ERROR_no_errors) {
+        fprintf(stderr, "[Error] AMXT_STP_export failed: %d\n", err);
+    } else {
+        printf("[Info] STEP file exported successfully: %s\n", output_path.c_str());
+    }
+}
 
 int main(int argc, char* argv[])
 {
@@ -38,7 +67,7 @@ int main(int argc, char* argv[])
         step_path = argv[1];
     } else {
         // Default to cube214.step
-        step_path = base + "resource/hollow_cube.step";
+        step_path = base + "resource/100106_7f144e5b_0000.step";
     }
 
     // Extract filename stem for output path
@@ -84,6 +113,9 @@ int main(int argc, char* argv[])
         return 1;
     }
     printf("[Info] STEP file read successfully: %s\n", step_path.c_str());
+
+    // Export the MainDoc to STEP file
+    Export_step(&main_doc, step_path);
 
     // 3. Get root component, iterate nodes to find Body nodes
     const Xchg_ComponentPtr& root = main_doc->RootComponent();
