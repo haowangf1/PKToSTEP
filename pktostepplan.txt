@@ -1,5 +1,10 @@
 
-step1:利用PK接口把从PK_BODY取出所有的Topo(类似PK_BODY_ask_topology接口)和几何(类似PK_FACE_ask_surf接口取几何)，把Topo和几何转换到AMCAXExchangeBase定义的中间数据格式，这个需要分析
-PK中Topo的父子关系，并按AMCAXExchangeBase的规则转换，将PK转换到AXExchangeBase后，可以再用AXExchangeBase的接口转会PK_BODY并序列化到xt文件(可以用软件渲染)以检查正确性
+step1:
+    1.1利用PK接口把从PK_BODY取出所有的Topo(类似PK_BODY_ask_topology接口)和几何(类似PK_FACE_ask_surf接口取几何)，把Topo和几何转换到AMCAXExchangeBase定义的中间数据格式，这个需要分析
+PK中Topo的父子关系，并按AMCAXExchangeBase的规则转换，将PK转换到AXExchangeBase后，可以再用AXExchangeBase的接口转会PK_BODY并序列化到xt文件(可以用软件渲染)以检查正确性。
 
-step2:把AMCAXExchangeBase定义的中间数据格式写出成STEP文件，并用cad assistant打开以检查其正确性
+    
+step2:
+    导出STEP文件，AMXT_STP_read接口读取到Xchg_MainDoc(包含xchg_body的装配体)，现在再把这个整体结构导出为STEP文件，我这里有一份基于类似occ拟合的自研内核导出step文件的
+源代码库可以参考(D:\workspace\step_nio,其中导出部分为 D:\workspace\step_nio\src\writer，暂时只关注导出部分)，当前版本我们只关注装配结构和Brep结构的导出，忽略属性的部分。
+另外step_nio是基于一个几何内核导出，我们是基于一个自定义的数据中间格式x格式导出step，有些部分不必完全一致，你自行取舍。

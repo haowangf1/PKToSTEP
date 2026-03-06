@@ -24,7 +24,10 @@
       "Bash(while read file)",
       "Bash(do cp \"$file\" ../r1.0.1failed/)",
       "Bash(echo \"Copied: $file\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(D:/workspace/PKToSTEP/CLAUDE.md:*)",
+      "Bash(D:/workspace/PKToSTEP/docs/step_writer_architecture.md:*)",
+      "Bash(D:/workspace/PKToSTEP/docs/step2_implementation_plan.md:*)"
     ]
   }
 }

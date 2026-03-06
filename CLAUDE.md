@@ -257,3 +257,61 @@ if (fin_curve != PK_ENTITY_null) {
         xchg_edge->SetGeom(curve_3d);
 }
 ```
+
+## Step2: STEP 文件导出
+### 代码库位置**Xchg 格式接口**：`D:workspaceexchange_baseinclude`- `topology/` - 拓扑类（Body, Shell, Face, Loop, Edge, Vertex）- `geom/surface/` - 曲面类（Plane, Cylinder, Sphere, NURBS 等）- `geom/curve/` - 曲线类（Line, Circle, NURBS, Polyline 等）- `geom/` - 基础几何（Point, Trsf, Axis）- `xchg_main_doc.hpp` - 主文档类**step_nio 参考实现**：`D:workspacestep_niosrcwriter`- `STEPWriter.cpp` - 外观类- `STEPWriter_Actor.hpp/cpp` - 核心逻辑- `TopoShapeMapping.hpp/cpp` - 形状去重- `SBuilder.hpp` - STEP 实体构建器
+
+### 参考文档
+
+- `docs/step_writer_architecture.md` - STEP 写出架构总结（基于 step_nio）
+- `docs/step2_implementation_plan.md` - Step2 实现方案
+
+### 目标
+
+将 `Xchg_MainDoc`（包含 `Xchg_Body` 的装配体）导出为 STEP 文件。
+
+**范围**：
+- ✅ 装配结构导出
+- ✅ BRep 结构导出
+- ❌ 属性导出（暂不支持）
+
+### 核心架构
+
+```
+XchgToSTEPWriter (主类)
+    ├── STEPEntityBuilder (STEP 实体构建器)
+    ├── XchgShapeMapper (形状去重映射)
+    └── AssemblyContext (装配上下文)
+```
+
+### 关键技术点
+
+1. **实体编号管理**：从 1 开始递增，每个实体唯一编号
+2. **形状去重**：Vertex/Edge 复用，减小文件大小
+3. **方向处理**：正确映射 Xchg 和 STEP 的方向标志
+4. **装配变换**：Xchg_Trsf → AXIS2_PLACEMENT_3D + ITEM_DEFINED_TRANSFORMATION
+5. **单位和精度**：支持 mm/m/inch，默认精度 1e-6
+
+### Xchg → STEP 映射
+
+| Xchg 实体 | STEP 实体 |
+|-----------|----------|
+| `Xchg_Body` | `MANIFOLD_SOLID_BREP` / `BREP_WITH_VOIDS` |
+| `Xchg_Shell` | `CLOSED_SHELL` / `OPEN_SHELL` |
+| `Xchg_Face` | `ADVANCED_FACE` |
+| `Xchg_Loop` | `FACE_BOUND` + `EDGE_LOOP` |
+| `Xchg_Coedge` | `ORIENTED_EDGE` |
+| `Xchg_Edge` | `EDGE_CURVE` |
+| `Xchg_Vertex` | `VERTEX_POINT` |
+| `Xchg_Surface` | `PLANE` / `CYLINDRICAL_SURFACE` / `B_SPLINE_SURFACE` / ... |
+| `Xchg_Curve` | `LINE` / `CIRCLE` / `B_SPLINE_CURVE` / ... |
+| `Xchg_Point` | `CARTESIAN_POINT` |
+
+### 参考实现
+
+参考 `D:\workspace\step_nio\src\writer\` 中的实现：
+- `STEPWriter` - 外观类，管理写出流程
+- `STEPWriter_Actor` - 核心逻辑，处理产品树和几何
+- `TopoShapeMapping` - 形状去重机制
+- `SBuilder` - STEP 实体构建器
+
