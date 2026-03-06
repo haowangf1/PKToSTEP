@@ -2,6 +2,8 @@
 
 总是用中文回答
 
+调用api时先自行查文档，不要乱写代码导致编译错误，这时非常低级和严重的错误，如果找不到api在哪，请求助
+
 本文件为 Claude Code (claude.ai/code) 在此代码库中工作时提供指导。
 
 ## 开发规则
@@ -13,6 +15,11 @@
 **PK 头文件位置**：
 ```
 ~/.conan2/p/psker*/p/include/parasolid_kernel.h
+```
+
+**exchange_base头文件位置**：
+```
+D:\workspace\exchange_base\include
 ```
 
 **查找方法**：

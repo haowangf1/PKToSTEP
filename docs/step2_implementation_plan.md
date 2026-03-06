@@ -124,11 +124,9 @@ private:
 **职责**：构建符合 STEP 语法的实体字符串
 
 **实现策略**：
-- ✅ **直接复用 step_nio 的 SBuilder 实现**
+- ✅ **仿照step_nio 的 SBuilder 实现**
 - 源文件位置：`D:\workspace\step_nio\src\writer\SBuilder.hpp`
-- 实现时直接复制 SBuilder 代码并适配到 PKToSTEP 项目
-- 不需要重新实现，step_nio 的实现已经成熟且经过验证
-- 可能需要的调整：命名空间、依赖项、部分接口适配
+
 
 **接口**：
 ```cpp
