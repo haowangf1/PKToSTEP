@@ -340,8 +340,8 @@ void XchgToSTEPWriter::WriteComponent(const Xchg_ComponentPtr& comp) {
     int productDefId = WriteProductDefinition(productDefFormationId);
     int productDefShapeId = WriteProductDefinitionShape(productDefId);
 
-    // 写出几何（遍历 NodesPool）
-    int shapeRepId = 0;
+    // 收集所有 body 的 shape representation
+    std::vector<int> bodyRepIds;
     Xchg_Size_t numNodes = comp->GetNumNodes();
     for (Xchg_Size_t i = 0; i < numNodes; ++i) {
         Xchg_NodePtr node = comp->GetNodeByIndex(i);
@@ -349,16 +349,30 @@ void XchgToSTEPWriter::WriteComponent(const Xchg_ComponentPtr& comp) {
 
         Xchg_BodyPtr body = node->GetBodyPtr();
         if (body) {
-            shapeRepId = WriteBodyAsShapeRepresentation(body);
+            int bodyRepId = WriteBodyAsShapeRepresentation(body);
+            if (bodyRepId > 0) {
+                bodyRepIds.push_back(bodyRepId);
+            }
         }
     }
 
-    // 关联产品和几何
-    if (shapeRepId > 0) {
-        WriteShapeDefinitionRepresentation(productDefShapeId, shapeRepId);
-    }
+    // 创建主 SHAPE_REPRESENTATION，包含所有 body 和全局坐标系
+    int mainShapeRepId = m_mapper->AllocateNewId();
+    std::vector<int> repItems = {m_axis2Placement3DId};
+    repItems.insert(repItems.end(), bodyRepIds.begin(), bodyRepIds.end());
 
-    // TODO: 递归处理子组件（装配结构）
+    std::string entity = m_builder->BeginEntity(mainShapeRepId, "SHAPE_REPRESENTATION")
+        .AddString("")
+        .AddEntityArray(repItems)
+        .AddEntityRef(m_geometricRepContextId)
+        .Build();
+    WriteEntity(entity);
+
+    // 关联产品和几何
+    WriteShapeDefinitionRepresentation(productDefShapeId, mainShapeRepId);
+
+    // 递归处理子组件（装配结构）
+    // TODO: 实现装配结构的 NAUO + CDSR 写出
 }
 
 int XchgToSTEPWriter::WriteBodyAsShapeRepresentation(const Xchg_BodyPtr& body) {
