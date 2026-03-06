@@ -605,3 +605,13 @@ cmake --build build/Debug --config Debug
 - 直接遍历 Xchg 的拓扑层次
 - 参考 step_nio 的 STEP 语法和文件结构
 - 不要过度设计（Xchg 已经简化了很多工作）
+
+
+4. 待实现的功能（TODO）：
+    - ❌ 递归装配结构（NAUO + CDSR）
+    - ❌ 子组件的变换矩阵处理
+    - ❌ 组件实例化
+
+  当前的实现已经可以正确导出单个组件的多个 body，并生成符合 STEP AP214 标准的文件。如果需要支持装配结构，需要参考 step_nio 的
+  writePTreeImplTemp 和 writeCDSR 实现，添加 NAUO（Next Assembly Usage Occurrence）和 CDSR（Context Dependent Shape
+  Representation）实体。
