@@ -27,7 +27,8 @@
       "Bash(done)",
       "Bash(D:/workspace/PKToSTEP/CLAUDE.md:*)",
       "Bash(D:/workspace/PKToSTEP/docs/step_writer_architecture.md:*)",
-      "Bash(D:/workspace/PKToSTEP/docs/step2_implementation_plan.md:*)"
+      "Bash(D:/workspace/PKToSTEP/docs/step2_implementation_plan.md:*)",
+      "Bash(pdftotext:*)"
     ]
   }
 }
