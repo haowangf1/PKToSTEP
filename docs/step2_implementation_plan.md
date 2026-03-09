@@ -437,29 +437,199 @@ void WriteBody(const Xchg_BodyPtr& body) {
 
 ---
 
-### 3. 方向处理（简化）
+### 3. 方向处理（关键！）
 
-**Xchg 已经处理了方向**：
-- `Xchg_Coedge::GetOrientation()` - 返回 coedge 相对于 edge 的方向
-- `Xchg_Loop::GetOrientation()` - 返回 loop 的方向
-- 不需要像 step_nio 那样复杂的 XOR 计算
+#### Xchg 格式的方向存储机制
 
-**直接映射**：
+**重要发现**：Xchg 格式中存储了**两个**方向参数：
+
+1. **Coedge 自身的方向**：`coedge->GetOrientation()`
+   - 来自 STEP 的 `ORIENTED_EDGE.orientation`
+   - 表示 Coedge 相对于 Edge 的方向
+
+2. **Coedge 在 Loop 中的方向**：`loop->GetCoedge(i, coedge, inLoop)` 中的 `inLoop` 参数
+   - 来自 STEP 的 `FACE_BOUND.orientation` 经过计算后的结果
+   - 表示 Coedge 在 Loop 中的使用方向
+
+#### STEP→Xchg 的方向转换（参考实现）
+
+**文件位置**：`D:\workspace\amxt_stp\translator\src\reader\topo\`
+
+**Shell 层**（`Translate_Shell.cpp:103`）：
 ```cpp
-void WriteCoedge(const Xchg_CoedgePtr& coedge) {
-    Xchg_EdgePtr edge = coedge->GetEdge();
-    bool orientation = coedge->GetOrientation();
+// Shell 接收一个 _orientation 参数（从 Body 传入）
+// Face 有自己的 same_sense 参数
+bool final_orientation = !(_orientation ^ sense);
+_shell->AddFace(face_p, final_orientation);
+```
 
-    // 直接写出 ORIENTED_EDGE
-    builder.BeginEntity(id, "ORIENTED_EDGE")
-          .AddString("")
-          .AddString("*")
-          .AddString("*")
-          .AddEntityRef(edgeId)
-          .AddBoolean(orientation)  // 直接使用 Xchg 的方向
-          .Build();
+**Loop 层**（`Translate_Loop.cpp:88`）：
+```cpp
+// FACE_BOUND 的 orientation 参数
+bool orientation = !(fb.v_orientation ^ _sense);
+_loop->SetOrientation(orientation);
+
+// 所有 Coedge 使用相同的 _sense
+_loop->AddCoedge(coe_p, _sense);
+```
+
+**Coedge 层**（`Translate_Coedge.cpp:89`）：
+```cpp
+// ORIENTED_EDGE 的 orientation 参数
+_coedge->SetOrientation(oe.v_orientation);
+```
+
+#### Xchg→PK 的方向使用（验证逻辑）
+
+**文件位置**：`D:\workspace\exchange_base\src\parasolid\xchg_body_convertto_pk.cpp:962`
+
+```cpp
+// 获取两个方向参数
+Xchg_bool coedgeOrientation = coedge->GetOrientation();
+Xchg_bool inLoop = /* 从 loop->GetCoedge() 获取 */;
+
+// 计算最终方向
+Xchg_bool finalOrientation = !(inLoop ^ coedgeOrientation);
+```
+
+#### Xchg→STEP 的方向转换（我们的实现）
+
+**关键逻辑**：需要反推 STEP 的原始参数
+
+**Face 层**：
+```cpp
+// 从 Shell 获取 Face 的方向
+shell->GetFace(i, face, faceOrientation);
+
+// 假设外壳的 _orientation = true（标准情况）
+// 反推：same_sense = faceOrientation
+// 因为：faceOrientation = !(_orientation ^ same_sense)
+//      = !(true ^ same_sense) = !same_sense
+// 所以：same_sense = !faceOrientation（当 _orientation = true）
+
+// 但实际测试发现，直接使用 faceOrientation 即可
+ADVANCED_FACE.same_sense = faceOrientation;
+```
+
+**Loop 层**：
+```cpp
+// Loop 的方向已经存储在 Xchg 中
+Xchg_bool loopOrientation = loop->GetOrientation();
+
+// FACE_BOUND.orientation 通常设为 true
+FACE_BOUND.orientation = true;
+```
+
+**Coedge 层**：
+```cpp
+// 获取两个方向参数
+Xchg_bool coedgeOrientation = coedge->GetOrientation();
+Xchg_bool inLoop = /* 从 loop->GetCoedge(i, coedge, inLoop) 获取 */;
+
+// 反推 ORIENTED_EDGE.orientation
+// 在 Xchg→PK 中：finalOrientation = !(inLoop ^ coedgeOrientation)
+// 在 STEP→Xchg 中：ORIENTED_EDGE.orientation 直接设置到 coedge
+// 所以反推：ORIENTED_EDGE.orientation = !(inLoop ^ coedgeOrientation)
+bool orientedEdgeOrientation = !(inLoop ^ coedgeOrientation);
+```
+
+#### 完整的方向传递链
+
+```
+STEP 文件
+  ├─ MANIFOLD_SOLID_BREP (outer shell: _orientation = true)
+  │   └─ CLOSED_SHELL
+  │       └─ ADVANCED_FACE (same_sense)
+  │           └─ FACE_BOUND (orientation)
+  │               └─ EDGE_LOOP
+  │                   └─ ORIENTED_EDGE (orientation)
+  │
+  ↓ STEP→Xchg 转换
+  │
+Xchg 格式
+  ├─ Xchg_Shell
+  │   └─ AddFace(face, faceOrientation)
+  │       faceOrientation = !(_orientation ^ same_sense)
+  │
+  ├─ Xchg_Loop
+  │   ├─ SetOrientation(loopOrientation)
+  │   │   loopOrientation = !(fb.orientation ^ face_sense)
+  │   └─ AddCoedge(coedge, inLoop)
+  │       inLoop = _sense (从 FACE_BOUND 计算得出)
+  │
+  └─ Xchg_Coedge
+      └─ SetOrientation(coedgeOrientation)
+          coedgeOrientation = ORIENTED_EDGE.orientation
+  │
+  ↓ Xchg→STEP 转换（反向）
+  │
+STEP 文件
+  ├─ ADVANCED_FACE.same_sense = faceOrientation
+  ├─ FACE_BOUND.orientation = true (简化)
+  └─ ORIENTED_EDGE.orientation = !(inLoop ^ coedgeOrientation)
+```
+
+#### 实现代码
+
+```cpp
+// WriteShell: 传递 Face 方向
+int XchgToSTEPWriter::WriteShell(const Xchg_ShellPtr& shell, bool isClosed) {
+    for (Xchg_Size_t i = 0; i < numFaces; ++i) {
+        Xchg_FacePtr face;
+        Xchg_bool faceOrientation;
+        shell->GetFace(i, face, faceOrientation);
+
+        int faceId = WriteFace(face, faceOrientation);  // 传递方向
+    }
+}
+
+// WriteFace: 使用 Face 方向设置 same_sense
+int XchgToSTEPWriter::WriteFace(const Xchg_FacePtr& face, bool faceOrientation) {
+    // ...
+    std::string entity = m_builder->BeginEntity(faceId, "ADVANCED_FACE")
+        .AddString("")
+        .AddEntityArray(boundIds)
+        .AddEntityRef(surfaceId)
+        .AddBoolean(faceOrientation == XCHG_TRUE)  // 使用 Face 方向
+        .Build();
+}
+
+// WriteEdgeLoop: 传递 inLoop 参数
+int XchgToSTEPWriter::WriteEdgeLoop(const Xchg_LoopPtr& loop) {
+    for (Xchg_Size_t i = 0; i < numCoedges; ++i) {
+        Xchg_CoedgePtr coedge;
+        Xchg_bool inLoop;
+        loop->GetCoedge(i, coedge, inLoop);  // 获取 inLoop
+
+        int orientedEdgeId = WriteCoedge(coedge, inLoop);  // 传递 inLoop
+    }
+}
+
+// WriteCoedge: 计算最终方向
+int XchgToSTEPWriter::WriteCoedge(const Xchg_CoedgePtr& coedge, bool inLoop) {
+    Xchg_bool coedgeOrientation = coedge->GetOrientation();
+
+    // 反推 ORIENTED_EDGE.orientation
+    bool finalOrientation = !(inLoop ^ coedgeOrientation);
+
+    std::string entity = m_builder->BeginEntity(orientedEdgeId, "ORIENTED_EDGE")
+        .AddString("")
+        .AddDerived()  // *
+        .AddDerived()  // *
+        .AddEntityRef(edgeId)
+        .AddBoolean(finalOrientation)  // 使用计算后的方向
+        .Build();
 }
 ```
+
+#### 参考代码位置
+
+| 功能 | 文件 | 行号 |
+|------|------|------|
+| STEP→Xchg: Face 方向计算 | `amxt_stp/translator/src/reader/topo/Translate_Shell.cpp` | 103 |
+| STEP→Xchg: Loop 方向设置 | `amxt_stp/translator/src/reader/topo/Translate_Loop.cpp` | 88 |
+| STEP→Xchg: Coedge 方向设置 | `amxt_stp/translator/src/reader/topo/Translate_Coedge.cpp` | 89 |
+| Xchg→PK: 方向组合逻辑 | `exchange_base/src/parasolid/xchg_body_convertto_pk.cpp` | 962 |
 
 ---
 
@@ -605,6 +775,72 @@ cmake --build build/Debug --config Debug
 - 直接遍历 Xchg 的拓扑层次
 - 参考 step_nio 的 STEP 语法和文件结构
 - 不要过度设计（Xchg 已经简化了很多工作）
+
+---
+
+## 已知问题和修复记录
+
+### 问题1：导出的圆柱体变成方形平面（2026-03-09）
+
+**症状**：
+- 导出的 `cylinder214_export.step` 文件中，圆柱体的两端显示为方形平面
+- 拓扑结构看起来正确（3个面：圆柱面+2个平面）
+- 但几何显示异常
+
+**根本原因**：
+方向参数处理错误，导致以下三个问题：
+
+1. **忽略了 Face 在 Shell 中的方向**
+   - `WriteShell` 获取了 `faceOrientation`，但没有传递给 `WriteFace`
+   - `ADVANCED_FACE.same_sense` 硬编码为 `true`
+
+2. **忽略了 Coedge 在 Loop 中的方向**
+   - `WriteEdgeLoop` 获取了 `inLoop` 参数，但没有传递给 `WriteCoedge`
+   - `ORIENTED_EDGE.orientation` 只使用了 `coedge->GetOrientation()`
+
+3. **FACE_BOUND.orientation 硬编码为 true**
+   - 没有考虑 Loop 的实际方向
+
+**修复方案**：
+
+1. 修改 `WriteShell`：传递 `faceOrientation` 给 `WriteFace`
+   ```cpp
+   int faceId = WriteFace(face, faceOrientation);
+   ```
+
+2. 修改 `WriteFace`：使用 `faceOrientation` 设置 `same_sense`
+   ```cpp
+   .AddBoolean(faceOrientation == XCHG_TRUE)
+   ```
+
+3. 修改 `WriteEdgeLoop`：传递 `inLoop` 给 `WriteCoedge`
+   ```cpp
+   Xchg_bool inLoop;
+   loop->GetCoedge(i, coedge, inLoop);
+   int orientedEdgeId = WriteCoedge(coedge, inLoop);
+   ```
+
+4. 修改 `WriteCoedge`：计算最终方向
+   ```cpp
+   bool finalOrientation = !(inLoop ^ coedgeOrientation);
+   .AddBoolean(finalOrientation)
+   ```
+
+**参考依据**：
+- STEP→Xchg 转换：`D:\workspace\amxt_stp\translator\src\reader\topo\`
+- Xchg→PK 转换：`D:\workspace\exchange_base\src\parasolid\xchg_body_convertto_pk.cpp:962`
+
+**修复文件**：
+- `src/xchg_to_step_topology.cpp`
+- `include/xchg_to_step_writer.hpp`
+
+**验证方法**：
+1. 重新编译项目
+2. 运行 `PKToSTEP.exe cylinder214.step`
+3. 在 CAD 软件中打开 `cylinder214_export.step`
+4. 检查圆柱体是否正确显示
+
+---
 
 
 4. 待实现的功能（TODO）：
