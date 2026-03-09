@@ -106,7 +106,7 @@ int XchgToSTEPWriter::WriteShell(const Xchg_ShellPtr& shell, bool isClosed) {
         shell->GetFace(i, face, faceOrientation);
 
         if (face) {
-            int faceId = WriteFace(face);
+            int faceId = WriteFace(face, faceOrientation);
             if (faceId > 0) {
                 faceIds.push_back(faceId);
             }
@@ -130,7 +130,7 @@ int XchgToSTEPWriter::WriteShell(const Xchg_ShellPtr& shell, bool isClosed) {
     return shellId;
 }
 
-int XchgToSTEPWriter::WriteFace(const Xchg_FacePtr& face) {
+int XchgToSTEPWriter::WriteFace(const Xchg_FacePtr& face, bool faceOrientation) {
     if (!face) return 0;
 
     // 获取 Face 的几何（Surface）
@@ -160,12 +160,14 @@ int XchgToSTEPWriter::WriteFace(const Xchg_FacePtr& face) {
     }
 
     // 写出 ADVANCED_FACE
+    // same_sense 根据 Face 在 Shell 中的方向设置
+    // 假设外壳的 _orientation = true，则 same_sense = faceOrientation
     int faceId = m_mapper->AllocateNewId();
     std::string entity = m_builder->BeginEntity(faceId, "ADVANCED_FACE")
         .AddString("")
         .AddEntityArray(boundIds)
         .AddEntityRef(surfaceId)
-        .AddBoolean(true)  // same_sense，通常为 true
+        .AddBoolean(faceOrientation == XCHG_TRUE)
         .Build();
     WriteEntity(entity);
 
@@ -203,11 +205,11 @@ int XchgToSTEPWriter::WriteEdgeLoop(const Xchg_LoopPtr& loop) {
 
     for (Xchg_Size_t i = 0; i < numCoedges; ++i) {
         Xchg_CoedgePtr coedge;
-        Xchg_bool coedgeOrientation;
-        Xchg_ErrorStatus err = loop->GetCoedge(i, coedge, coedgeOrientation);
+        Xchg_bool coedgeInLoop;
+        Xchg_ErrorStatus err = loop->GetCoedge(i, coedge, coedgeInLoop);
 
         if (err == XCHG_OK && coedge) {
-            int orientedEdgeId = WriteCoedge(coedge);
+            int orientedEdgeId = WriteCoedge(coedge, coedgeInLoop);
             if (orientedEdgeId > 0) {
                 orientedEdgeIds.push_back(orientedEdgeId);
             }
@@ -230,7 +232,7 @@ int XchgToSTEPWriter::WriteEdgeLoop(const Xchg_LoopPtr& loop) {
     return edgeLoopId;
 }
 
-int XchgToSTEPWriter::WriteCoedge(const Xchg_CoedgePtr& coedge) {
+int XchgToSTEPWriter::WriteCoedge(const Xchg_CoedgePtr& coedge, bool inLoop) {
     if (!coedge) return 0;
 
     // 获取 Edge
@@ -241,8 +243,13 @@ int XchgToSTEPWriter::WriteCoedge(const Xchg_CoedgePtr& coedge) {
         return 0;
     }
 
-    // 获取方向
-    Xchg_bool orientation = coedge->GetOrientation();
+    // 获取 Coedge 自身的方向
+    Xchg_bool coedgeOrientation = coedge->GetOrientation();
+
+    // 计算 ORIENTED_EDGE 的最终方向
+    // 根据 Xchg→PK 转换：finalOrientation = !(inLoop ^ coedgeOrientation)
+    // 反推：ORIENTED_EDGE.orientation = !(inLoop ^ coedgeOrientation)
+    bool finalOrientation = !(inLoop ^ coedgeOrientation);
 
     // 写出 Edge（如果尚未写出）
     int edgeId = WriteEdge(edge);
@@ -257,7 +264,7 @@ int XchgToSTEPWriter::WriteCoedge(const Xchg_CoedgePtr& coedge) {
         .AddDerived()  // *
         .AddDerived()  // *
         .AddEntityRef(edgeId)
-        .AddBoolean(orientation == XCHG_TRUE)
+        .AddBoolean(finalOrientation)
         .Build();
     WriteEntity(entity);
 

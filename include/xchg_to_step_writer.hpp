@@ -120,10 +120,10 @@ private:
     int WriteBody(const Xchg_BodyPtr& body);
     int WriteLump(const Xchg_LumpPtr& lump);
     int WriteShell(const Xchg_ShellPtr& shell, bool isClosed);
-    int WriteFace(const Xchg_FacePtr& face);
+    int WriteFace(const Xchg_FacePtr& face, bool faceOrientation);
     int WriteLoop(const Xchg_LoopPtr& loop, bool isOuter);
     int WriteEdgeLoop(const Xchg_LoopPtr& loop);
-    int WriteCoedge(const Xchg_CoedgePtr& coedge);
+    int WriteCoedge(const Xchg_CoedgePtr& coedge, bool inLoop);
     int WriteEdge(const Xchg_EdgePtr& edge);
     int WriteVertex(const Xchg_VertexPtr& vertex);
 
