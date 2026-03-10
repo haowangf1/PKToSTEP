@@ -1,5 +1,3 @@
-#include "pk_to_xchg_converter.hpp"
-
 #include "step/translator_step.hpp"
 #include "xchg_componentinstance.hpp"
 #include "xchg_maindoc.hpp"
@@ -7,20 +5,13 @@
 #include "xchg_node.hpp"
 #include "util/xchg_kernel_utils.hpp"
 #include "topology/xchg_body.hpp"
-#include "topology/xchg_lump.hpp"
-#include "topology/xchg_shell.hpp"
-#include "topology/xchg_face.hpp"
-#include "topology/xchg_loop.hpp"
-#include "topology/xchg_coedge.hpp"
-#include "topology/xchg_edge.hpp"
-#include "topology/xchg_vertex.hpp"
 
-#include "xchg_topo_compare.hpp"
+#include <parasolid_kernel.h>
+
 #include "../include/export_step.hpp"
 #include <cstdio>
 #include <string>
-#include <set>
-#include <map>
+#include <vector>
 
 void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
 {
@@ -66,12 +57,10 @@ int main(int argc, char* argv[])
     if (argc > 1) {
         step_path = argv[1];
     } else {
-        // Default to cube214.step
-        step_path = base + "resource/cylinder214.step";
+        step_path = base + "resource/hollow_cube.step";
     }
 
     // Extract filename stem for output path
-    // PK_PART_transmit will automatically append .xmt_txt
     auto name_start = step_path.rfind('/');
     std::string stem = (name_start != std::string::npos)
                        ? step_path.substr(name_start + 1) : step_path;
@@ -129,22 +118,22 @@ int main(int argc, char* argv[])
     Xchg_Size_t num_nodes = root->GetNumNodes();
     printf("[Info] Root component has %zu nodes.\n", num_nodes);
 
-    std::vector<PK_BODY_t> pk_bodies;
+    // Step 1: STEP -> Xchg -> PK，收集所有 PK_BODY
+    // 同时创建一个新 MainDoc，存储这些 PK_BODY，用于后续 PK->X->PK 往返测试
+    Xchg_MainDocPtr pk_doc = Xchg_MainDoc::Create();
+    Xchg_ComponentPtr pk_comp = pk_doc->CreateComponent(
+        L"pk_bodies", L"pk_bodies", Xchg_Component::ComponentInternal);
+    pk_doc->SetRootComponent(pk_comp);
 
+    int node_count = 0;
     for (Xchg_Size_t i = 0; i < num_nodes; ++i) {
         Xchg_NodePtr node = root->GetNodeByIndex(i);
         if (!node || node->GetNodeType() != Xchg_Node::BodyType)
             continue;
 
-        Xchg_BodyPtr xchg_body = node->GetBodyPtr();
-        if (!xchg_body) {
-            fprintf(stderr, "[Warn] Node %zu is BodyType but GetBodyPtr() returned null.\n", i);
-            continue;
-        }
+        printf("[Info] Processing Body node at index %zu.\n", i);
 
-        printf("[Info] Found Body node at index %zu.\n", i);
-
-        // 4. Convert Xchg_Body -> PK_BODY
+        // Xchg_Body -> PK_BODY
         Xchg_Int32 convert_err = node->ConvertToPKBody();
         if (convert_err != 0) {
             fprintf(stderr, "[Error] ConvertToPKBody failed: %d\n", convert_err);
@@ -155,65 +144,72 @@ int main(int argc, char* argv[])
             fprintf(stderr, "[Error] GetParasolidBody returned null.\n");
             continue;
         }
-        printf("[Info] Converted to PK_BODY tag: %d\n", pk_body_tag);
+        printf("[Info] Xchg->PK succeeded, PK_BODY tag: %d\n", pk_body_tag);
 
-        // 5. PK_BODY -> Xchg_Body (our converter)
-        PK_BODY_t original_pk_body = static_cast<PK_BODY_t>(pk_body_tag);
-
-        PKToXchgConverter converter;
-        converter.SetLogCallback([](const std::string& msg) {
-            fprintf(stderr, "[Converter] %s\n", msg.c_str());
-        });
-
-        Xchg_BodyPtr roundtrip_xchg_body;
-        STEPExport_ErrorCode rc = converter.Convert(original_pk_body, &roundtrip_xchg_body);
-        if (rc != STEP_OK || !roundtrip_xchg_body) {
-            fprintf(stderr, "[Error] PKToXchgConverter::Convert failed: %d\n", rc);
-            continue;
-        }
-        printf("[Info] PK_BODY -> Xchg_Body succeeded.\n");
-
-#if 0
-         // Dump both bodies for human-friendly comparison
-        XchgTopoCompare::DumpBody(xchg_body, "STEP->Xchg (REF)");
-        XchgTopoCompare::DumpBody(roundtrip_xchg_body, "PK->Xchg (OURS)");
-#endif
-
-        // 6. Xchg_Body -> PK_BODY roundtrip
-        Xchg_MainDocPtr rt_doc = Xchg_MainDoc::Create();
-        Xchg_ComponentPtr rt_comp = rt_doc->CreateComponent(
-            L"roundtrip", L"roundtrip", Xchg_Component::ComponentInternal);
-        rt_doc->SetRootComponent(rt_comp);
-        Xchg_NodePtr rt_node = rt_comp->CreateBodyNode(L"body", roundtrip_xchg_body, 0);
-
-        Xchg_Int32 rt_err = rt_node->ConvertToPKBody();
-        if (rt_err != 0) {
-            fprintf(stderr, "[Error] Roundtrip ConvertToPKBody failed: %d\n", rt_err);
-            continue;
-        }
-        Xchg_Int32 rt_pk_body = rt_node->GetParasolidBody();
-        if (rt_pk_body == 0) {
-            fprintf(stderr, "[Error] Roundtrip GetParasolidBody returned null.\n");
-            continue;
-        }
-        printf("[Info] Xchg_Body -> PK_BODY roundtrip succeeded, new tag: %d\n", rt_pk_body);
-
-        pk_bodies.push_back(static_cast<PK_BODY_t>(rt_pk_body));
+        // 在新 MainDoc 中创建对应 node，存储该 PK_BODY
+        wchar_t node_name[64];
+        swprintf(node_name, 64, L"body_%d", node_count++);
+        Xchg_BodyPtr empty_body = Xchg_Body::Create();
+        Xchg_NodePtr pk_node = pk_comp->CreateBodyNode(node_name, empty_body, 0);
+        pk_node->SetParasolidBody(pk_body_tag);
     }
 
-    int body_count = pk_bodies.size();
+    printf("[Info] Collected %d PK_BODY nodes.\n", node_count);
+
+    // Step 2: 遍历新 MainDoc，对每个 PK_BODY 执行 PK->X->PK 往返转换
+    std::vector<PK_BODY_t> roundtrip_bodies;
+
+    Xchg_Size_t pk_num_nodes = pk_comp->GetNumNodes();
+    for (Xchg_Size_t i = 0; i < pk_num_nodes; ++i) {
+        Xchg_NodePtr pk_node = pk_comp->GetNodeByIndex(i);
+        if (!pk_node || pk_node->GetNodeType() != Xchg_Node::BodyType)
+            continue;
+
+        Xchg_Int32 pk_body_tag = pk_node->GetParasolidBody();
+        printf("[Info] [%zu] PK->X: converting PK_BODY tag %d\n", i, pk_body_tag);
+
+        // PK_BODY -> Xchg_Body
+        Xchg_Int32 pk_to_x_err = pk_node->ConvertPKBodyToXBody();
+        if (pk_to_x_err != 0) {
+            fprintf(stderr, "[Error] ConvertPKBodyToXBody failed: %d\n", pk_to_x_err);
+            continue;
+        }
+        Xchg_BodyPtr xchg_body = pk_node->GetBodyPtr();
+        if (!xchg_body) {
+            fprintf(stderr, "[Error] GetBodyPtr returned null after ConvertPKBodyToXBody.\n");
+            continue;
+        }
+        printf("[Info] [%zu] PK->X succeeded.\n", i);
+
+        // Xchg_Body -> PK_BODY
+        Xchg_Int32 x_to_pk_err = pk_node->ConvertToPKBody();
+        if (x_to_pk_err != 0) {
+            fprintf(stderr, "[Error] X->PK ConvertToPKBody failed: %d\n", x_to_pk_err);
+            continue;
+        }
+        Xchg_Int32 rt_pk_body = pk_node->GetParasolidBody();
+        if (rt_pk_body == 0) {
+            fprintf(stderr, "[Error] X->PK GetParasolidBody returned null.\n");
+            continue;
+        }
+        printf("[Info] [%zu] X->PK succeeded, new PK_BODY tag: %d\n", i, rt_pk_body);
+
+        roundtrip_bodies.push_back(static_cast<PK_BODY_t>(rt_pk_body));
+    }
+
+    int body_count = roundtrip_bodies.size();
 
     if (body_count == 0) {
-        fprintf(stderr, "[Warn] No body nodes found in root component.\n");
+        fprintf(stderr, "[Warn] No bodies survived the roundtrip.\n");
     } else {
-        printf("[Info] Total %d bodies converted.\n", body_count);
+        printf("[Info] Total %d bodies after PK->X->PK roundtrip.\n", body_count);
 
-        // Export all bodies to single xt file
+        // 导出往返结果到 xt 文件
         PK_PART_transmit_o_t transmit_opts;
         PK_PART_transmit_o_m(transmit_opts);
         transmit_opts.transmit_format = PK_transmit_format_text_c;
 
-        PK_ERROR_code_t err = PK_PART_transmit(body_count, pk_bodies.data(), xt_path.c_str(), &transmit_opts);
+        PK_ERROR_code_t err = PK_PART_transmit(body_count, roundtrip_bodies.data(), xt_path.c_str(), &transmit_opts);
         if (err != PK_ERROR_no_errors) {
             fprintf(stderr, "[Error] PK_PART_transmit failed: %d\n", err);
         } else {
