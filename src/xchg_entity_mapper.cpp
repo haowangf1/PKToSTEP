@@ -139,6 +139,17 @@ int XchgEntityMapper::GetMapping(const Xchg_PointPtr& point) const {
     return (it != m_pointMap.end()) ? it->second : 0;
 }
 
+void XchgEntityMapper::SetMapping(const Xchg_SurfacePtr& surface, int id) {
+    if (!surface) return;
+    m_surfaceMap[surface.get()] = id;
+}
+
+void XchgEntityMapper::SetMapping(const Xchg_CurvePtr& curve, int id) {
+    if (!curve) return;
+    m_curveMap[curve.get()] = id;
+}
+
+
 void XchgEntityMapper::Clear() {
     m_vertexMap.clear();
     m_edgeMap.clear();

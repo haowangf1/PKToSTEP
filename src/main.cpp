@@ -57,7 +57,7 @@ int main(int argc, char* argv[])
     if (argc > 1) {
         step_path = argv[1];
     } else {
-        step_path = base + "resource/hollow_cube.step";
+        step_path = base + "resource/cylinder214.step";
     }
 
     // Extract filename stem for output path

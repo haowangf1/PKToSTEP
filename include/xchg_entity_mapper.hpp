@@ -53,6 +53,10 @@ public:
     // 分配新编号
     int AllocateNewId();
 
+    // 直接设置映射（用于写出后注册已分配的编号）
+    void SetMapping(const Xchg_SurfacePtr& surface, int id);
+    void SetMapping(const Xchg_CurvePtr& curve, int id);
+
     // 获取当前编号
     int GetCurrentId() const { return m_nextId; }
 

@@ -87,7 +87,7 @@ int XchgToSTEPWriter::WriteSurface(const Xchg_SurfacePtr& surface) {
     }
 
     if (surfaceId > 0) {
-        m_mapper->GetOrAllocate(surface);  // 记录映射
+        m_mapper->SetMapping(surface, surfaceId);  // 记录映射
     }
 
     return surfaceId;
@@ -100,18 +100,8 @@ int XchgToSTEPWriter::WritePlaneSurface(Xchg_PlaneSurface* plane) {
     Xchg_pnt origin = plane->GetOrigin();
     Xchg_dir normal = plane->GetNormal();
 
-    // 计算 X 轴（需要一个与法向量垂直的向量）
-    Xchg_dir xAxis;
-    if (std::abs(normal.x()) < 0.9) {
-        xAxis = Xchg_dir(1, 0, 0);
-    } else {
-        xAxis = Xchg_dir(0, 1, 0);
-    }
-    // 使用叉积计算正交的 X 轴
-    Xchg_dir yAxis = normal ^ xAxis;
-    yAxis.normalize();
-    xAxis = yAxis ^ normal;
-    xAxis.normalize();
+    // 直接从 Xchg_PlaneSurface 读取 X 方向（即 UDirection），保留原始方向信息
+    Xchg_dir xAxis = plane->GetXDirection();
 
     // 写出 AXIS2_PLACEMENT_3D
     int axisId = WriteAxis2Placement3D(
@@ -406,7 +396,7 @@ int XchgToSTEPWriter::WriteCurve(const Xchg_CurvePtr& curve) {
     }
 
     if (curveId > 0) {
-        m_mapper->GetOrAllocate(curve);  // 记录映射
+        m_mapper->SetMapping(curve, curveId);  // 记录映射
     }
 
     return curveId;

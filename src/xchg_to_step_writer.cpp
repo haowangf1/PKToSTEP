@@ -166,14 +166,40 @@ void XchgToSTEPWriter::WriteGlobalContext() {
         .Build();
     WriteEntity(entity);
 
-    // GEOMETRIC_REPRESENTATION_CONTEXT
-    m_geometricRepContextId = WriteGeometricRepresentationContext();
+    // 写出单位实体（独立，用于被复合实体引用）
+    // LENGTH_UNIT (metre)
+    int lengthUnitId = m_mapper->AllocateNewId();
+    *m_output << "#" << lengthUnitId << "=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.));\n";
 
-    // GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT
-    m_globalUncertaintyId = WriteGlobalUncertaintyAssignedContext();
+    // PLANE_ANGLE_UNIT (radian)
+    int angleUnitId = m_mapper->AllocateNewId();
+    *m_output << "#" << angleUnitId << "=(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.));\n";
 
-    // GLOBAL_UNIT_ASSIGNED_CONTEXT
-    m_globalUnitId = WriteGlobalUnitAssignedContext();
+    // SOLID_ANGLE_UNIT (steradian)
+    int solidAngleUnitId = m_mapper->AllocateNewId();
+    *m_output << "#" << solidAngleUnitId << "=(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT());\n";
+
+    // UNCERTAINTY_MEASURE_WITH_UNIT
+    int uncertaintyMeasureId = m_mapper->AllocateNewId();
+    entity = m_builder->BeginEntity(uncertaintyMeasureId, "UNCERTAINTY_MEASURE_WITH_UNIT")
+        .AddReal(m_uncertainty)
+        .AddEntityRef(lengthUnitId)
+        .AddString("distance_accuracy_value")
+        .AddString("confusion accuracy")
+        .Build();
+    WriteEntity(entity);
+
+    // 复合实体：GEOMETRIC_REPRESENTATION_CONTEXT + GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT
+    //         + GLOBAL_UNIT_ASSIGNED_CONTEXT + REPRESENTATION_CONTEXT
+    // 这是 ADVANCED_BREP_SHAPE_REPRESENTATION 第三个参数引用的实体
+    m_geometricRepContextId = m_mapper->AllocateNewId();
+    *m_output << "#" << m_geometricRepContextId
+              << "=( GEOMETRIC_REPRESENTATION_CONTEXT(3) "
+              << "GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#" << uncertaintyMeasureId << ")) "
+              << "GLOBAL_UNIT_ASSIGNED_CONTEXT((#" << lengthUnitId
+              << ",#" << angleUnitId
+              << ",#" << solidAngleUnitId << ")) "
+              << "REPRESENTATION_CONTEXT('','') );\n";
 
     // 全局坐标系 AXIS2_PLACEMENT_3D
     int originId = WritePoint(nullptr);  // (0,0,0)
@@ -203,12 +229,10 @@ int XchgToSTEPWriter::WriteGlobalUncertaintyAssignedContext() {
     // UNCERTAINTY_MEASURE_WITH_UNIT
     int uncertaintyMeasureId = m_mapper->AllocateNewId();
 
-    // LENGTH_UNIT
+    // LENGTH_UNIT (metre - Xchg内部单位是米)
     int lengthUnitId = m_mapper->AllocateNewId();
-    std::string lengthUnitEntity = m_builder->BeginEntity(lengthUnitId, "(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.))")
-        .Build();
     // 这是复合实体，需要特殊处理
-    *m_output << "#" << lengthUnitId << "=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.));\n";
+    *m_output << "#" << lengthUnitId << "=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.));\n";
 
     std::string entity = m_builder->BeginEntity(uncertaintyMeasureId, "UNCERTAINTY_MEASURE_WITH_UNIT")
         .AddReal(m_uncertainty)
@@ -229,15 +253,9 @@ int XchgToSTEPWriter::WriteGlobalUncertaintyAssignedContext() {
 }
 
 int XchgToSTEPWriter::WriteGlobalUnitAssignedContext() {
-    // LENGTH_UNIT
+    // LENGTH_UNIT (metre - Xchg内部单位是米，直接用 SI_UNIT($,.METRE.))
     int lengthUnitId = m_mapper->AllocateNewId();
-    std::string unitPrefix = ".MILLI.";
-    if (m_lengthUnit == STEPLengthUnit::Meter) {
-        unitPrefix = "$";
-    } else if (m_lengthUnit == STEPLengthUnit::Inch) {
-        unitPrefix = "$";
-    }
-    *m_output << "#" << lengthUnitId << "=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(" << unitPrefix << ",.METRE.));\n";
+    *m_output << "#" << lengthUnitId << "=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.));\n";
 
     // PLANE_ANGLE_UNIT
     int angleUnitId = m_mapper->AllocateNewId();
