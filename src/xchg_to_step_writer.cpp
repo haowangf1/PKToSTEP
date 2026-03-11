@@ -1,4 +1,4 @@
-#include "../include/xchg_to_step_writer.hpp"
+﻿#include "../include/xchg_to_step_writer.hpp"
 #include "../include/step_entity_builder.hpp"
 #include "../include/xchg_entity_mapper.hpp"
 
@@ -365,7 +365,8 @@ void XchgToSTEPWriter::WriteComponent(const Xchg_ComponentPtr& comp) {
     int productDefShapeId = WriteProductDefinitionShape(productDefId);
 
     // 写出几何（遍历 NodesPool）
-    int shapeRepId = 0;
+    // Write geometry: collect all body IDs into one ADVANCED_BREP_SHAPE_REPRESENTATION
+    std::vector<int> bodyIds;
     Xchg_Size_t numNodes = comp->GetNumNodes();
     for (Xchg_Size_t i = 0; i < numNodes; ++i) {
         Xchg_NodePtr node = comp->GetNodeByIndex(i);
@@ -373,12 +374,27 @@ void XchgToSTEPWriter::WriteComponent(const Xchg_ComponentPtr& comp) {
 
         Xchg_BodyPtr body = node->GetBodyPtr();
         if (body) {
-            shapeRepId = WriteBodyAsShapeRepresentation(body);
+            int bodyId = WriteBody(body);
+            if (bodyId > 0) {
+                bodyIds.push_back(bodyId);
+            }
         }
     }
 
-    // 关联产品和几何
-    if (shapeRepId > 0) {
+    // All bodies go into a single ADVANCED_BREP_SHAPE_REPRESENTATION
+    if (!bodyIds.empty()) {
+        std::vector<int> items = bodyIds;
+        items.push_back(m_axis2Placement3DId);
+        
+
+        int shapeRepId = m_mapper->AllocateNewId();
+        std::string entity = m_builder->BeginEntity(shapeRepId, "ADVANCED_BREP_SHAPE_REPRESENTATION")
+            .AddString("")
+            .AddEntityArray(items)
+            .AddEntityRef(m_geometricRepContextId)
+            .Build();
+        WriteEntity(entity);
+
         WriteShapeDefinitionRepresentation(productDefShapeId, shapeRepId);
     }
 
