@@ -166,20 +166,26 @@ void XchgToSTEPWriter::WriteGlobalContext() {
         .Build();
     WriteEntity(entity);
 
-    // 写出单位实体（独立，用于被复合实体引用）
-    // LENGTH_UNIT (metre)
+    // Xchg 格式内部长度单位固定为【米】（SI base unit）。
+    // 原因：amxt_stp 读取器在 GeomBuilder.cpp 中将 STEP 文件的长度值乘以
+    // m_length_factor（例如毫米文件的 factor=0.001）统一转换为米存入 Xchg。
+    // 因此写出时单位声明必须是 SI_UNIT($,.METRE.)，数值才与单位声明一致。
+    // 不能依赖 m_lengthUnit 设置，因为 Xchg 内部单位始终是米，与调用方设置无关。
+
+    // LENGTH_UNIT: 米（SI base, no prefix）
     int lengthUnitId = m_mapper->AllocateNewId();
     *m_output << "#" << lengthUnitId << "=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.));\n";
 
-    // PLANE_ANGLE_UNIT (radian)
+    // PLANE_ANGLE_UNIT: 弧度（SI base）
     int angleUnitId = m_mapper->AllocateNewId();
     *m_output << "#" << angleUnitId << "=(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.));\n";
 
-    // SOLID_ANGLE_UNIT (steradian)
+    // SOLID_ANGLE_UNIT: 球面度（SI base）
     int solidAngleUnitId = m_mapper->AllocateNewId();
     *m_output << "#" << solidAngleUnitId << "=(NAMED_UNIT(*)SI_UNIT($,.STERADIAN.)SOLID_ANGLE_UNIT());\n";
 
-    // UNCERTAINTY_MEASURE_WITH_UNIT
+    // UNCERTAINTY_MEASURE_WITH_UNIT：精度值单位与长度单位一致（米）
+    // m_uncertainty 默认 1e-6 m = 1 纳米，合理
     int uncertaintyMeasureId = m_mapper->AllocateNewId();
     entity = m_builder->BeginEntity(uncertaintyMeasureId, "UNCERTAINTY_MEASURE_WITH_UNIT")
         .AddReal(m_uncertainty)
@@ -189,9 +195,9 @@ void XchgToSTEPWriter::WriteGlobalContext() {
         .Build();
     WriteEntity(entity);
 
-    // 复合实体：GEOMETRIC_REPRESENTATION_CONTEXT + GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT
-    //         + GLOBAL_UNIT_ASSIGNED_CONTEXT + REPRESENTATION_CONTEXT
-    // 这是 ADVANCED_BREP_SHAPE_REPRESENTATION 第三个参数引用的实体
+    // 复合上下文实体（gggr）：将几何上下文、单位、精度合并为一个实体。
+    // ADVANCED_BREP_SHAPE_REPRESENTATION 的第三个参数引用此实体。
+    // 参考 step_nio::STEPWriter_Actor::writeGGGR() 的做法。
     m_geometricRepContextId = m_mapper->AllocateNewId();
     *m_output << "#" << m_geometricRepContextId
               << "=( GEOMETRIC_REPRESENTATION_CONTEXT(3) "
@@ -201,7 +207,7 @@ void XchgToSTEPWriter::WriteGlobalContext() {
               << ",#" << solidAngleUnitId << ")) "
               << "REPRESENTATION_CONTEXT('','') );\n";
 
-    // 全局坐标系 AXIS2_PLACEMENT_3D
+    // 全局坐标系 AXIS2_PLACEMENT_3D（原点，Z轴朝上，X轴朝右）
     int originId = WritePoint(nullptr);  // (0,0,0)
     int zDirId = WriteDirection(0, 0, 1);
     int xDirId = WriteDirection(1, 0, 0);

@@ -14,7 +14,7 @@ AMXT_API AMXT_STP_ERROR_code_t AMXT_STP_export(
 
     try {
         XchgToSTEPWriter writer(filename);
-        writer.SetLengthUnit(STEPLengthUnit::Millimeter);
+        // Xchg 内部单位固定为米，无需设置 LengthUnit
         writer.SetPrecision(1e-6);
 
         bool success = writer.WriteMainDoc(*mainDoc);
