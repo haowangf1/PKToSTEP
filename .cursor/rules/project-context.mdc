@@ -6,25 +6,46 @@ alwaysApply: true
 # PKToSTEP 项目概述
 
 **目标**: 将 Parasolid (PK_BODY) 模型转换为 STEP 文件，两阶段架构：
-- **Step1 (已完成)**: PK_BODY → AMCAXExchangeBase 中间格式
-- **Step2 (计划中)**: AMCAXExchangeBase → STEP 文件导出
+- **Step1 (已完成)**: PK_BODY → AMCAXExchangeBase 中间格式（`pk_to_xchg_converter.cpp`）
+- **Step2 (进行中)**: AMCAXExchangeBase (Xchg) → STEP 文件导出（`xchg_to_step_writer.cpp` 等）
 
-## 核心文件
+## 相关源码库地址
+
+| 库 | 本地路径 | 说明 |
+|---|---|---|
+| **amxt_stp** | `D:\workspace\amxt_stp` | STEP 读取器实现，了解 STEP 导入流程和 Xchg 数据填充方式 |
+| **exchange_base** | `D:\workspace\exchange_base` | AMCAXExchangeBase 中间格式数据结构定义 |
+| **step_nio writer** | `D:\workspace\step_nio\src\writer` | 含几何内核的 STEP 导出参考实现（STEPWriter_Actor 等） |
+
+## Step2 核心文件
 
 | 文件 | 说明 |
 |------|------|
-| `src/pk_to_xchg_converter.cpp` | 核心转换逻辑（1103行） |
-| `include/pk_to_xchg_converter.hpp` | 转换器接口 |
-| `include/xchg_error_code.hpp` | 错误码定义 |
-| `src/main.cpp` | 测试入口，含往返测试和拓扑dump |
+| `src/xchg_to_step_writer.cpp` | 主写出器：产品结构、ADVANCED_BREP_SHAPE_REPRESENTATION |
+| `src/xchg_to_step_topology.cpp` | 拓扑写出：Body/Lump/Shell/Face/Loop/Coedge/Edge/Vertex |
+| `src/xchg_to_step_geometry.cpp` | 几何写出：Surface/Curve/Point 等 |
+| `src/step_entity_builder.cpp` | STEP 实体字符串构建辅助 |
+| `src/xchg_entity_mapper.cpp` | 实体 ID 分配与映射 |
+| `src/export_step.cpp` | 对外导出接口 |
+| `include/xchg_to_step_writer.hpp` | 主写出器接口 |
+| `include/export_step.hpp` | 对外接口声明 |
+| `include/step_entity_builder.hpp` | Builder 接口 |
+| `include/xchg_entity_mapper.hpp` | Mapper 接口 |
+
+## Step1 核心文件
+
+| 文件 | 说明 |
+|------|------|
+| `src/main.cpp` | 测试入口，含往返测试和拓扑 dump |
 | `resource/hollow_cube.step` | 主要测试模型（空心立方体） |
+| `resource/100106_7f144e5b_0000.step` | 多 Body 测试模型（含 Body1/Body2 两个 MANIFOLD_SOLID_BREP） |
 
 ## 构建规范
 
 ```powershell
 # 始终在 build 目录下操作，先确认当前目录再执行
 cd d:\workspace\PKToSTEP\build
-cmake --build . --config Release
+cmake --build . --config Debug
 ```
 
 **重要**:
@@ -34,7 +55,7 @@ cmake --build . --config Release
   ```powershell
   conan install .. --build=missing
   cmake .. -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake
-  cmake --build . --config Release
+  cmake --build . --config Debug
   ```
 
 ## 依赖项（Conan 管理）
@@ -52,6 +73,26 @@ cmake --build . --config Release
 - **API 函数**: `http://192.168.180.50/docs/parasolid/headers/pk_<函数名>.html`
 - 可直接用 WebFetch 访问，无需 curl
 
+## Step2 设计要点
+
+### STEP 文件结构（多 Body 情况）
+所有 MANIFOLD_SOLID_BREP 放在**同一个** `ADVANCED_BREP_SHAPE_REPRESENTATION` 的实体数组中：
+```
+#12=ADVANCED_BREP_SHAPE_REPRESENTATION('',(#13,#14),#context);
+#13=MANIFOLD_SOLID_BREP('Body1',#shell1);
+#14=MANIFOLD_SOLID_BREP('Body2',#shell2);
+```
+`WriteBody` 只处理第一个 Lump（正确行为，无需修改）。
+
+### 全局上下文（GGGR）
+`m_geometricRepContextId` 对应复合实体：
+`GEOMETRIC_REPRESENTATION_CONTEXT + GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT + GLOBAL_UNIT_ASSIGNED_CONTEXT + REPRESENTATION_CONTEXT`
+
+Xchg 内部长度单位固定为**米**（amxt_stp 读入时已乘 length_factor 统一为米），写出时单位声明必须为 `SI_UNIT($,.METRE.)`。
+
+### 参考实现
+需要了解某个写出细节时，优先参考 `D:\workspace\step_nio\src\writer\STEPWriter_Actor.cpp`。
+
 ## 关键设计规则（不可违反）
 
 1. **Void Region**: `regions[0]` 是 infinite void region，Solid/General body 跳过它
@@ -65,16 +106,18 @@ cmake --build . --config Release
 - PK API 内存用 `PKMemGuard` RAII 管理
 - 日志通过回调 `log_callback_("message")`，禁止硬编码 cout/printf
 - 错误码向上传播
+- **最小化改动原则**：修复 bug 时只改必要部分，不重构周边代码
 
 ## 测试方式
 
-往返测试：STEP → PK_BODY → Xchg_Body → PK_BODY → XMT 文件 → 可视化检查
+往返测试：STEP → PK_BODY → Xchg_Body → STEP 文件 → 检查
 
 ```powershell
-cd d:\workspace\PKToSTEP\build
-./bin/PKToSTEP ../resource/hollow_cube.step
-# 检查 ../xt/hollow_cube_roundtrip.xmt_txt
+cd d:\workspace\PKToSTEP\build\Debug
+./Debug/PKToSTEP.exe
 ```
+
+多 Body 测试文件：`resource/100106_7f144e5b_0000.step`
 
 ## 术语
 
@@ -85,18 +128,16 @@ cd d:\workspace\PKToSTEP\build
 | Fin | PK 中 Edge 在 Loop 中的有向使用 |
 | Coedge | Xchg/STEP 中 Edge 在 Loop 中的有向使用 |
 | Roundtrip | 往返转换验证 |
+| GGGR | GEOMETRIC_REPRESENTATION_CONTEXT 复合实体（几何上下文） |
+| ABSR | ADVANCED_BREP_SHAPE_REPRESENTATION |
+| MSB | MANIFOLD_SOLID_BREP |
 
-## 待处理问题（需明确后返回确认）
-
-> 前提：需先明确 **STEP 导入**流程和 **ExchangeBase → PK 转换接口**的行为，再回来判断下列硬编码是否正确。
+## 待处理问题
 
 - [ ] **TODO-1: Loop Orientation 硬编码**  
   当前代码 `xchg_loop->SetOrientation(XCHG_TRUE)` 固定写死 `1`。  
-  观察到的规律：STEP 中 loop orient 跟随 face 的 `AddFace` orientation（`shellOrient=0` 时为 `0`，`shellOrient=1` 时为 `1`）。  
-  PK 的 loop 本身没有 orientation 属性，无法从 PK 还原此值。  
   **待确认**：固定为 `1` 是否在所有情况下都正确，还是需要从 face orientation 推导？
 
 - [ ] **TODO-2: Coedge（Fin）方向硬编码**  
   当前代码 `xchg_loop->AddCoedge(xchg_coedge, XCHG_TRUE)` 固定写死 `1`。  
-  规律与 loop orient 完全相同。PK 中 fin 和 loop 的关系也没有该方向属性，同样无法从 PK 还原。  
   **待确认**：固定为 `1` 是否正确，还是需要结合 STEP 导入逻辑重新验证？
