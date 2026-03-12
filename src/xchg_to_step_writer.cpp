@@ -350,64 +350,142 @@ int XchgToSTEPWriter::WriteShapeDefinitionRepresentation(int productDefShapeId, 
     return id;
 }
 
-void XchgToSTEPWriter::WriteComponent(const Xchg_ComponentPtr& comp) {
-    if (!comp) return;
+// 从 Xchg_transfo 写出 AXIS2_PLACEMENT_3D，返回实体 ID
+int XchgToSTEPWriter::WriteAxis2Placement3DFromTransfo(const Xchg_transfo& trsf) {
+    const Xchg_pnt& o  = trsf.getOrigin();
+    const Xchg_dir& xd = trsf.getXdir();
+    const Xchg_dir& zd = trsf.getZdir();
+    return WriteAxis2Placement3D(
+        o.x(), o.y(), o.z(),
+        zd.x(), zd.y(), zd.z(),
+        xd.x(), xd.y(), xd.z());
+}
 
-    // 写出产品结构
-    std::string compName;
-    if (compName.empty()) {
-        compName = "Component";
-    }
+// 写出父子装配关系
+// 参考 step_nio STEPWriter_Actor::writeCDSR / writeItemDefinedTransformation
+void XchgToSTEPWriter::WriteAssemblyLink(int parentSrId, int parentPdId,
+                                          int childSrId,  int childPdId,
+                                          const Xchg_transfo& trsf) {
+    // AXIS2_PLACEMENT_3D for child placement
+    int childPlacementId = WriteAxis2Placement3DFromTransfo(trsf);
 
-    int productId = WriteProduct(compName);
-    int productDefFormationId = WriteProductDefinitionFormation(productId);
-    int productDefId = WriteProductDefinition(productDefFormationId);
-    int productDefShapeId = WriteProductDefinitionShape(productDefId);
+    // ITEM_DEFINED_TRANSFORMATION
+    int idtId = m_mapper->AllocateNewId();
+    WriteEntity("#" + std::to_string(idtId) +
+        "=ITEM_DEFINED_TRANSFORMATION(\'\',\'\',#" +
+        std::to_string(m_axis2Placement3DId) + ",#" +
+        std::to_string(childPlacementId) + ");\n");
 
-    // 写出几何（遍历 NodesPool）
-    // Write geometry: collect all body IDs into one ADVANCED_BREP_SHAPE_REPRESENTATION
+    // REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION (complex entity)
+    int srrwtId = m_mapper->AllocateNewId();
+    WriteEntity("#" + std::to_string(srrwtId) +
+        "=(REPRESENTATION_RELATIONSHIP(\'\',\'\',#" +
+        std::to_string(childSrId) + ",#" +
+        std::to_string(parentSrId) +
+        ")REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION(#" +
+        std::to_string(idtId) +
+        ")SHAPE_REPRESENTATION_RELATIONSHIP());\n");
+
+    // NEXT_ASSEMBLY_USAGE_OCCURRENCE
+    int nauoId = m_mapper->AllocateNewId();
+    WriteEntity("#" + std::to_string(nauoId) +
+        "=NEXT_ASSEMBLY_USAGE_OCCURRENCE(\'\',\'\',\'\',#" +
+        std::to_string(parentPdId) + ",#" +
+        std::to_string(childPdId) + ",$);\n");
+
+    // PRODUCT_DEFINITION_SHAPE referencing NAUO directly
+    int nauoPdsId = m_mapper->AllocateNewId();
+    WriteEntity("#" + std::to_string(nauoPdsId) +
+        "=PRODUCT_DEFINITION_SHAPE(\'Placement\',\'Placement of an item\',#" +
+        std::to_string(nauoId) + ");\n");
+
+    // CONTEXT_DEPENDENT_SHAPE_REPRESENTATION
+    int cdsrId = m_mapper->AllocateNewId();
+    WriteEntity("#" + std::to_string(cdsrId) +
+        "=CONTEXT_DEPENDENT_SHAPE_REPRESENTATION(#" +
+        std::to_string(srrwtId) + ",#" +
+        std::to_string(nauoPdsId) + ");\n");
+}
+XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_ComponentPtr& comp) {
+    ComponentIds result{0, 0};
+    if (!comp) return result;
+
+    // 产品名称
+    std::string compName = comp->Name().c_str();
+    if (compName.empty()) compName = "Component";
+
+    int productId          = WriteProduct(compName);
+    int productDefFormId   = WriteProductDefinitionFormation(productId);
+    int productDefId       = WriteProductDefinition(productDefFormId);
+    int productDefShapeId  = WriteProductDefinitionShape(productDefId);
+
+    // 写出当前组件的几何（NodesPool 中所有 body）
     std::vector<int> bodyIds;
     Xchg_Size_t numNodes = comp->GetNumNodes();
     for (Xchg_Size_t i = 0; i < numNodes; ++i) {
         Xchg_NodePtr node = comp->GetNodeByIndex(i);
         if (!node) continue;
-
         Xchg_BodyPtr body = node->GetBodyPtr();
         if (body) {
             int bodyId = WriteBody(body);
-            if (bodyId > 0) {
-                bodyIds.push_back(bodyId);
-            }
+            if (bodyId > 0) bodyIds.push_back(bodyId);
         }
     }
 
-    // All bodies go into a single ADVANCED_BREP_SHAPE_REPRESENTATION
+    // 所有 body 放入同一个 ADVANCED_BREP_SHAPE_REPRESENTATION
+    int shapeRepId = 0;
     if (!bodyIds.empty()) {
         std::vector<int> items = bodyIds;
         items.push_back(m_axis2Placement3DId);
-        
-
-        int shapeRepId = m_mapper->AllocateNewId();
+        shapeRepId = m_mapper->AllocateNewId();
         std::string entity = m_builder->BeginEntity(shapeRepId, "ADVANCED_BREP_SHAPE_REPRESENTATION")
             .AddString("")
             .AddEntityArray(items)
             .AddEntityRef(m_geometricRepContextId)
             .Build();
         WriteEntity(entity);
-
+        WriteShapeDefinitionRepresentation(productDefShapeId, shapeRepId);
+    } else {
+        // 纯装配节点：写一个空的 SHAPE_REPRESENTATION
+        shapeRepId = m_mapper->AllocateNewId();
+        std::string entity = m_builder->BeginEntity(shapeRepId, "SHAPE_REPRESENTATION")
+            .AddString(compName)
+            .AddEntityArray({m_axis2Placement3DId})
+            .AddEntityRef(m_geometricRepContextId)
+            .Build();
+        WriteEntity(entity);
         WriteShapeDefinitionRepresentation(productDefShapeId, shapeRepId);
     }
 
-    // TODO: 递归处理子组件（装配结构）
+    result.productDefId = productDefId;
+    result.shapeRepId   = shapeRepId;
+
+    // 递归处理子组件（装配结构）
+    Xchg_Size_t numChildren = comp->GetNumChildren();
+    for (Xchg_Size_t i = 0; i < numChildren; ++i) {
+        Xchg_ComponentInstancePtr inst = comp->GetChild(i);
+        if (!inst) continue;
+        Xchg_ComponentPtr childComp = inst->GetComponent();
+        if (!childComp) continue;
+
+        // 递归写出子组件
+        ComponentIds childIds = WriteComponent(childComp);
+
+        // 获取实例变换
+        Xchg_transfo trsf = inst->GetTransform();
+
+        // 写出装配关系
+        WriteAssemblyLink(shapeRepId, productDefId,
+                          childIds.shapeRepId, childIds.productDefId,
+                          trsf);
+    }
+
+    return result;
 }
 
 int XchgToSTEPWriter::WriteBodyAsShapeRepresentation(const Xchg_BodyPtr& body) {
     if (!body) return 0;
-
-    // 写出 Body
     int bodyId = WriteBody(body);
-
-    // 创建 SHAPE_REPRESENTATION
     int shapeRepId = m_mapper->AllocateNewId();
     std::string entity = m_builder->BeginEntity(shapeRepId, "ADVANCED_BREP_SHAPE_REPRESENTATION")
         .AddString("")
@@ -415,10 +493,8 @@ int XchgToSTEPWriter::WriteBodyAsShapeRepresentation(const Xchg_BodyPtr& body) {
         .AddEntityRef(m_geometricRepContextId)
         .Build();
     WriteEntity(entity);
-
     return shapeRepId;
 }
-
 void XchgToSTEPWriter::WriteEntity(const std::string& entity) {
     if (m_output && !entity.empty()) {
         *m_output << entity;

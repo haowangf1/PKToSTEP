@@ -1,4 +1,4 @@
-#include "step/translator_step.hpp"
+﻿#include "step/translator_step.hpp"
 #include "xchg_componentinstance.hpp"
 #include "xchg_maindoc.hpp"
 #include "xchg_component.hpp"
@@ -9,10 +9,35 @@
 #include <parasolid_kernel.h>
 
 #include "../include/export_step.hpp"
+#include "../include/xchg_to_step_writer.hpp"
 #include <cstdio>
 #include <string>
 #include <vector>
 
+// Dump MainDoc 装配树（只打印父子关系）
+static void DumpComponent(const Xchg_ComponentPtr& comp, int depth)
+{
+    if (!comp) return;
+    std::string indent(depth * 2, ' ');
+    printf("%s[%s] nodes=%zu children=%zu\n",
+        indent.c_str(), comp->Name().c_str(),
+        comp->GetNumNodes(), comp->GetNumChildren());
+    for (Xchg_Size_t ci = 0; ci < comp->GetNumChildren(); ++ci) {
+        Xchg_ComponentInstancePtr inst = comp->GetChild(ci);
+        if (!inst || !inst->GetComponent()) continue;
+        DumpComponent(inst->GetComponent(), depth + 1);
+    }
+}
+
+static void DumpMainDoc(const Xchg_MainDocPtr& mainDoc)
+{
+    if (!mainDoc) return;
+    printf("\n===== MainDoc Assembly Tree =====\n");
+    DumpComponent(mainDoc->RootComponent(), 0);
+    printf("=================================\n\n");
+}
+
+// 使用我们自己的 XchgToSTEPWriter 导出 MainDoc（支持完整装配体结构）
 void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
 {
     // 从输入路径提取文件名（不含扩展名）
@@ -30,14 +55,18 @@ void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
     // 生成输出文件名：原文件名 + _export.step
     std::string output_path = stem + "_export.step";
 
-    printf("[Info] Exporting MainDoc to: %s\n", output_path.c_str());
+    printf("[Info] Exporting MainDoc to: %s (via XchgToSTEPWriter)\n", output_path.c_str());
 
-    AMXT_STP_export_o_t options;
-    AMXT_STP_export_o_m(options);
+    DumpMainDoc(*mainDoc);
 
-    AMXT_STP_ERROR_code_t err = AMXT_STP_export(mainDoc, &options, output_path);
-    if (err != AMXT_STP_ERROR_no_errors) {
-        fprintf(stderr, "[Error] AMXT_STP_export failed: %d\n", err);
+    XchgToSTEPWriter writer(output_path);
+    writer.SetPrecision(1e-6);
+
+    bool ok = writer.WriteMainDoc(*mainDoc);
+    writer.Done();
+
+    if (!ok) {
+        fprintf(stderr, "[Error] XchgToSTEPWriter::WriteMainDoc failed\n");
     } else {
         printf("[Info] STEP file exported successfully: %s\n", output_path.c_str());
     }
@@ -57,7 +86,7 @@ int main(int argc, char* argv[])
     if (argc > 1) {
         step_path = argv[1];
     } else {
-        step_path = base + "resource/cylinder214.step";
+        step_path = base + "resource/assembly.step";
     }
 
     // Extract filename stem for output path

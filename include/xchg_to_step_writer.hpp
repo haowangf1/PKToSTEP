@@ -4,12 +4,14 @@
 #include <memory>
 #include <ostream>
 #include <fstream>
+#include <vector>
 
 // Forward declarations
 template<typename T>
 class SmartPtr;
 class Xchg_MainDoc;
 class Xchg_Component;
+class Xchg_ComponentInstance;
 class Xchg_Body;
 class Xchg_Lump;
 class Xchg_Shell;
@@ -21,6 +23,7 @@ class Xchg_Vertex;
 class Xchg_Surface;
 class Xchg_Curve;
 class Xchg_Point;
+class Xchg_transfo;
 
 // 几何类型前向声明
 class Xchg_PlaneSurface;
@@ -36,6 +39,7 @@ class Xchg_Polyline;
 
 typedef SmartPtr<Xchg_MainDoc> Xchg_MainDocPtr;
 typedef SmartPtr<Xchg_Component> Xchg_ComponentPtr;
+typedef SmartPtr<Xchg_ComponentInstance> Xchg_ComponentInstancePtr;
 typedef SmartPtr<Xchg_Body> Xchg_BodyPtr;
 typedef SmartPtr<Xchg_Lump> Xchg_LumpPtr;
 typedef SmartPtr<Xchg_Shell> Xchg_ShellPtr;
@@ -50,7 +54,6 @@ typedef SmartPtr<Xchg_Point> Xchg_PointPtr;
 
 // Xchg_Circle 是 Xchg_Ellipse 的别名
 typedef Xchg_Ellipse Xchg_Circle;
-
 
 
 class STEPEntityBuilder;
@@ -113,7 +116,20 @@ private:
     int WriteShapeDefinitionRepresentation(int productDefShapeId, int shapeRepId);
 
     // 装配结构
-    void WriteComponent(const Xchg_ComponentPtr& comp);
+    // 返回 {productDefId, shapeRepId}，供父级写出装配关系
+    struct ComponentIds {
+        int productDefId;
+        int shapeRepId;   // 0 表示该组件没有几何（纯装配节点）
+    };
+    ComponentIds WriteComponent(const Xchg_ComponentPtr& comp);
+
+    // 写出父子装配关系（NAUO + CDSR + IDT + SRRWT）
+    void WriteAssemblyLink(int parentSrId, int parentPdId,
+                           int childSrId, int childPdId,
+                           const Xchg_transfo& trsf);
+
+    // 从 Xchg_transfo 写出 AXIS2_PLACEMENT_3D，返回实体 ID
+    int WriteAxis2Placement3DFromTransfo(const Xchg_transfo& trsf);
 
     // 几何表示
     int WriteBodyAsShapeRepresentation(const Xchg_BodyPtr& body);
@@ -177,5 +193,17 @@ private:
 
     bool m_initialized;
     bool m_done;
-};
 
+    // 装配关系延迟写出队列（类似 step_nio 的 cdsrRecords）
+    struct AssemblyLinkRecord {
+        int parentSrId;
+        int parentPdId;
+        int childSrId;
+        int childPdId;
+        // 变换矩阵分量（从 Xchg_transfo 提取）
+        double ox, oy, oz;       // Origin
+        double xx, xy, xz;       // X direction
+        double zx, zy, zz;       // Z direction
+    };
+    std::vector<AssemblyLinkRecord> m_assemblyLinks;
+};
