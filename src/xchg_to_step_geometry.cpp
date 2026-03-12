@@ -240,18 +240,19 @@ int XchgToSTEPWriter::WriteToroidalSurface(Xchg_ToroidalSurface* torus) {
 int XchgToSTEPWriter::WriteNurbsSurface(Xchg_NurbsSurface* nurbs) {
     if (!nurbs) return 0;
 
-    // 获取 NURBS 参数
     int degreeU = nurbs->GetUDegree();
     int degreeV = nurbs->GetVDegree();
+    int numU = nurbs->GetNumPointsU();
+    int numV = nurbs->GetNumPointsV();
+    bool isRational = nurbs->IsRational();
 
-    // 获取控制点数量
-    int numControlPointsU = nurbs->GetNumPointsU();
-    int numControlPointsV = nurbs->GetNumPointsV();
+    bool uClosed = nurbs->IsUClosed();
+    bool vClosed = nurbs->IsVClosed();
 
-    // 写出控制点
-    std::vector<int> controlPointIds;
-    for (int v = 0; v < numControlPointsV; ++v) {
-        for (int u = 0; u < numControlPointsU; ++u) {
+    // 写出控制点（按 u-major 顺序存储，STEP 要求外层 u、内层 v）
+    std::vector<int> cpIds;
+    for (int u = 0; u < numU; ++u) {
+        for (int v = 0; v < numV; ++v) {
             const Xchg_pnt& pt = nurbs->Point(u, v);
             int ptId = m_mapper->AllocateNewId();
             std::string entity = m_builder->BeginEntity(ptId, "CARTESIAN_POINT")
@@ -259,81 +260,87 @@ int XchgToSTEPWriter::WriteNurbsSurface(Xchg_NurbsSurface* nurbs) {
                 .AddRealArray({pt.x(), pt.y(), pt.z()})
                 .Build();
             WriteEntity(entity);
-            controlPointIds.push_back(ptId);
+            cpIds.push_back(ptId);
         }
     }
 
     // 获取节点向量
     std::vector<double> knotsU, knotsV;
     std::vector<int> multsU, multsV;
-
-    int numKnotsU = nurbs->GetNumKnotsU();
-    int numKnotsV = nurbs->GetNumKnotsV();
-
-    for (int i = 0; i < numKnotsU; ++i) {
+    for (int i = 0; i < nurbs->GetNumKnotsU(); ++i) {
         knotsU.push_back(nurbs->GetUKnotValue(i));
         multsU.push_back(nurbs->GetUKnotMultiplicity(i));
     }
-
-    for (int i = 0; i < numKnotsV; ++i) {
+    for (int i = 0; i < nurbs->GetNumKnotsV(); ++i) {
         knotsV.push_back(nurbs->GetVKnotValue(i));
         multsV.push_back(nurbs->GetVKnotMultiplicity(i));
     }
 
-    // 获取权重
-    std::vector<double> weights;
-    for (int v = 0; v < numControlPointsV; ++v) {
-        for (int u = 0; u < numControlPointsU; ++u) {
-            weights.push_back(nurbs->GetWeight(u, v));
-        }
-    }
-
-    // 写出 B_SPLINE_SURFACE_WITH_KNOTS
     int nurbsId = m_mapper->AllocateNewId();
 
-    // 这是一个复杂实体，需要特殊处理
-    *m_output << "#" << nurbsId << "=B_SPLINE_SURFACE_WITH_KNOTS('',";
-    *m_output << degreeU << "," << degreeV << ",";
-
-    // 控制点（二维数组）
-    *m_output << "((";
-    for (int v = 0; v < numControlPointsV; ++v) {
-        if (v > 0) *m_output << "),(";
-        for (int u = 0; u < numControlPointsU; ++u) {
-            if (u > 0) *m_output << ",";
-            *m_output << "#" << controlPointIds[v * numControlPointsU + u];
+    // 辅助：写出控制点二维数组（STEP 要求外层 u、内层 v）
+    auto writeCPs2D = [&]() {
+        *m_output << "((";
+        for (int u = 0; u < numU; ++u) {
+            if (u > 0) *m_output << "),(";
+            for (int v = 0; v < numV; ++v) {
+                if (v > 0) *m_output << ",";
+                *m_output << "#" << cpIds[u * numV + v];
+            }
         }
-    }
-    *m_output << ")),.UNSPECIFIED.,.F.,.F.,.F.,";
+        *m_output << "))";
+    };
+    auto writeIntArr = [&](const std::vector<int>& a) {
+        *m_output << "(";
+        for (size_t i = 0; i < a.size(); ++i) { if (i) *m_output << ","; *m_output << a[i]; }
+        *m_output << ")";
+    };
+    auto writeRealArr = [&](const std::vector<double>& a) {
+        *m_output << "(";
+        for (size_t i = 0; i < a.size(); ++i) { if (i) *m_output << ","; *m_output << a[i]; }
+        *m_output << ")";
+    };
 
-    // 节点向量 U 的重数
-    *m_output << "(";
-    for (size_t i = 0; i < multsU.size(); ++i) {
-        if (i > 0) *m_output << ",";
-        *m_output << multsU[i];
+    if (isRational) {
+        // 复合实体形式（子类型按字母序）
+        *m_output << "#" << nurbsId << "=(";
+        *m_output << "BOUNDED_SURFACE()";
+        *m_output << "B_SPLINE_SURFACE(" << degreeU << "," << degreeV << ",";
+        writeCPs2D();
+        *m_output << ",.UNSPECIFIED.,"
+                  << (uClosed ? ".T." : ".F.") << ","
+                  << (vClosed ? ".T." : ".F.") << ",.F.)";
+        *m_output << "B_SPLINE_SURFACE_WITH_KNOTS(";
+        writeIntArr(multsU); *m_output << ","; writeIntArr(multsV); *m_output << ",";
+        writeRealArr(knotsU); *m_output << ","; writeRealArr(knotsV);
+        *m_output << ",.UNSPECIFIED.)";
+        *m_output << "GEOMETRIC_REPRESENTATION_ITEM()";
+        *m_output << "RATIONAL_B_SPLINE_SURFACE((";
+        for (int u = 0; u < numU; ++u) {
+            if (u > 0) *m_output << ",(";
+            else *m_output << "(";
+            for (int v = 0; v < numV; ++v) {
+                if (v > 0) *m_output << ",";
+                *m_output << nurbs->GetWeight(u, v);
+            }
+            *m_output << ")";
+        }
+        *m_output << "))";
+        *m_output << "REPRESENTATION_ITEM('')";
+        *m_output << "SURFACE()";
+        *m_output << ");\n";
+    } else {
+        // 非 rational：简单实体
+        *m_output << "#" << nurbsId << "=B_SPLINE_SURFACE_WITH_KNOTS('',";
+        *m_output << degreeU << "," << degreeV << ",";
+        writeCPs2D();
+        *m_output << ",.UNSPECIFIED.,"
+                  << (uClosed ? ".T." : ".F.") << ","
+                  << (vClosed ? ".T." : ".F.") << ",.F.,";
+        writeIntArr(multsU); *m_output << ","; writeIntArr(multsV); *m_output << ",";
+        writeRealArr(knotsU); *m_output << ","; writeRealArr(knotsV);
+        *m_output << ",.UNSPECIFIED.);\n";
     }
-    *m_output << "),(";
-
-    // 节点向量 V 的重数
-    for (size_t i = 0; i < multsV.size(); ++i) {
-        if (i > 0) *m_output << ",";
-        *m_output << multsV[i];
-    }
-    *m_output << "),(";
-
-    // 节点向量 U 的值
-    for (size_t i = 0; i < knotsU.size(); ++i) {
-        if (i > 0) *m_output << ",";
-        *m_output << knotsU[i];
-    }
-    *m_output << "),(";
-
-    // 节点向量 V 的值
-    for (size_t i = 0; i < knotsV.size(); ++i) {
-        if (i > 0) *m_output << ",";
-        *m_output << knotsV[i];
-    }
-    *m_output << "),.UNSPECIFIED.);\n";
 
     return nurbsId;
 }
@@ -495,13 +502,13 @@ int XchgToSTEPWriter::WriteEllipse(Xchg_Ellipse* ellipse) {
 int XchgToSTEPWriter::WriteNurbsCurve(Xchg_NurbsCurve* nurbs) {
     if (!nurbs) return 0;
 
-    // 获取 NURBS 参数
     int degree = nurbs->GetDegree();
-    int numControlPoints = nurbs->GetNumPoints();
+    int numPts = nurbs->GetNumPoints();
+    bool isRational = nurbs->IsRational();
 
     // 写出控制点
-    std::vector<int> controlPointIds;
-    for (int i = 0; i < numControlPoints; ++i) {
+    std::vector<int> cpIds;
+    for (int i = 0; i < numPts; ++i) {
         const Xchg_pnt& pt = nurbs->Point(i);
         int ptId = m_mapper->AllocateNewId();
         std::string entity = m_builder->BeginEntity(ptId, "CARTESIAN_POINT")
@@ -509,39 +516,70 @@ int XchgToSTEPWriter::WriteNurbsCurve(Xchg_NurbsCurve* nurbs) {
             .AddRealArray({pt.x(), pt.y(), pt.z()})
             .Build();
         WriteEntity(entity);
-        controlPointIds.push_back(ptId);
+        cpIds.push_back(ptId);
     }
 
     // 获取节点向量和重数
     std::vector<double> knots;
     std::vector<int> mults;
-
-    int numKnots = nurbs->GetNumKnots();
-    for (int i = 0; i < numKnots; ++i) {
+    for (int i = 0; i < nurbs->GetNumKnots(); ++i) {
         knots.push_back(nurbs->GetKnotValue(i));
         mults.push_back(nurbs->GetKnotMultiplicity(i));
     }
 
-    // 写出 B_SPLINE_CURVE_WITH_KNOTS
     int nurbsId = m_mapper->AllocateNewId();
 
-    *m_output << "#" << nurbsId << "=B_SPLINE_CURVE_WITH_KNOTS('',";
-    *m_output << degree << ",(";
-    for (size_t i = 0; i < controlPointIds.size(); ++i) {
-        if (i > 0) *m_output << ",";
-        *m_output << "#" << controlPointIds[i];
+    auto writeCPs = [&]() {
+        *m_output << "(";
+        for (size_t i = 0; i < cpIds.size(); ++i) {
+            if (i) *m_output << ",";
+            *m_output << "#" << cpIds[i];
+        }
+        *m_output << ")";
+    };
+    auto writeIntArr = [&](const std::vector<int>& a) {
+        *m_output << "(";
+        for (size_t i = 0; i < a.size(); ++i) { if (i) *m_output << ","; *m_output << a[i]; }
+        *m_output << ")";
+    };
+    auto writeRealArr = [&](const std::vector<double>& a) {
+        *m_output << "(";
+        for (size_t i = 0; i < a.size(); ++i) { if (i) *m_output << ","; *m_output << a[i]; }
+        *m_output << ")";
+    };
+
+    if (isRational) {
+        // 复合实体形式（子类型按字母序）
+        *m_output << "#" << nurbsId << "=(";
+        *m_output << "BOUNDED_CURVE()";
+        *m_output << "B_SPLINE_CURVE(" << degree << ",";
+        writeCPs();
+        *m_output << ",.UNSPECIFIED.,.F.,.F.)";
+        *m_output << "B_SPLINE_CURVE_WITH_KNOTS(";
+        writeIntArr(mults); *m_output << ",";
+        writeRealArr(knots);
+        *m_output << ",.UNSPECIFIED.)";
+        *m_output << "CURVE()";
+        *m_output << "GEOMETRIC_REPRESENTATION_ITEM()";
+        *m_output << "RATIONAL_B_SPLINE_CURVE(";
+        *m_output << "(";
+        for (int i = 0; i < numPts; ++i) {
+            if (i) *m_output << ",";
+            *m_output << nurbs->GetWeight(i);
+        }
+        *m_output << "))";
+        *m_output << "REPRESENTATION_ITEM('')";
+        *m_output << ");\n";
+    } else {
+        // 非 rational：简单实体
+        *m_output << "#" << nurbsId << "=B_SPLINE_CURVE_WITH_KNOTS('',";
+        *m_output << degree << ",";
+        writeCPs();
+        *m_output << ",.UNSPECIFIED.,.F.,.F.,";
+        writeIntArr(mults); *m_output << ",";
+        writeRealArr(knots);
+        *m_output << ",.UNSPECIFIED.);\n";
     }
-    *m_output << "),.UNSPECIFIED.,.F.,.F.,(";
-    for (size_t i = 0; i < mults.size(); ++i) {
-        if (i > 0) *m_output << ",";
-        *m_output << mults[i];
-    }
-    *m_output << "),(";
-    for (size_t i = 0; i < knots.size(); ++i) {
-        if (i > 0) *m_output << ",";
-        *m_output << knots[i];
-    }
-    *m_output << "),.UNSPECIFIED.);\n";
 
     return nurbsId;
 }
