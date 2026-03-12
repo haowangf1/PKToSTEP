@@ -1,4 +1,4 @@
-﻿#include "../include/xchg_to_step_writer.hpp"
+#include "../include/xchg_to_step_writer.hpp"
 #include "../include/step_entity_builder.hpp"
 #include "../include/xchg_entity_mapper.hpp"
 
@@ -433,17 +433,33 @@ XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_Compo
     }
 
     // 所有 body 放入同一个 ADVANCED_BREP_SHAPE_REPRESENTATION
+    // 双层结构：SDR→SR，SR→ABSR（通过 SHAPE_REPRESENTATION_RELATIONSHIP）
+    // 这样 SRRWT 引用 SR，符合 AP214 规范，查看器兼容性更好
     int shapeRepId = 0;
     if (!bodyIds.empty()) {
         std::vector<int> items = bodyIds;
         items.push_back(m_axis2Placement3DId);
-        shapeRepId = m_mapper->AllocateNewId();
-        std::string entity = m_builder->BeginEntity(shapeRepId, "ADVANCED_BREP_SHAPE_REPRESENTATION")
-            .AddString("")
+        // 1. 写 ADVANCED_BREP_SHAPE_REPRESENTATION（存放实体几何）
+        int absrId = m_mapper->AllocateNewId();
+        WriteEntity(m_builder->BeginEntity(absrId, "ADVANCED_BREP_SHAPE_REPRESENTATION")
+            .AddString(compName)
             .AddEntityArray(items)
             .AddEntityRef(m_geometricRepContextId)
-            .Build();
-        WriteEntity(entity);
+            .Build());
+        // 2. 写 SHAPE_REPRESENTATION（装配占位 SR，作为子坐标空间）
+        shapeRepId = m_mapper->AllocateNewId();
+        WriteEntity(m_builder->BeginEntity(shapeRepId, "SHAPE_REPRESENTATION")
+            .AddString(compName)
+            .AddEntityArray({m_axis2Placement3DId})
+            .AddEntityRef(m_geometricRepContextId)
+            .Build());
+        // 3. 写 SHAPE_REPRESENTATION_RELATIONSHIP：SR → ABSR
+        int srrId = m_mapper->AllocateNewId();
+        WriteEntity("#" + std::to_string(srrId) +
+            "=SHAPE_REPRESENTATION_RELATIONSHIP('','',#" +
+            std::to_string(shapeRepId) + ",#" +
+            std::to_string(absrId) + ");\n");
+        // 4. SDR 指向 SR（而非 ABSR）
         WriteShapeDefinitionRepresentation(productDefShapeId, shapeRepId);
     } else {
         // 纯装配节点：写一个空的 SHAPE_REPRESENTATION
