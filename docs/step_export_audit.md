@@ -48,8 +48,9 @@
 - A5: FACE_BOUND orientation → `loop->GetOrientation()` ✅
 - A2: self_intersect 保持 `.F.`（Xchg 无此 API）— 无需修改
 
-### Step 2: 修复拓扑逻辑（C1, C3）
-- Edge vertex 错误处理
+### Step 2: 修复拓扑逻辑（C1, C3） ✅
+- C1: Point 去重逻辑简化，先检查 HasMapping 再 GetOrAllocate ✅
+- C3: Edge GetVertex 失败时打印警告并跳过 ✅
 
 ### Step 3: 实现缺失几何类型（B1-B4）
 - WriteRevolutionSurface

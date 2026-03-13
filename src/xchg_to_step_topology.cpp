@@ -299,7 +299,8 @@ int XchgToSTEPWriter::WriteEdge(const Xchg_EdgePtr& edge) {
     err2 = edge->GetEndVertex(endVertex);
 
     if (err1 != XCHG_OK || err2 != XCHG_OK) {
-      //TODO
+        std::cerr << "[Warning] Edge has invalid vertices, skipping" << std::endl;
+        return 0;
     }
 
     int startVertexId = WriteVertex(startVertex);
@@ -335,9 +336,10 @@ int XchgToSTEPWriter::WriteVertex(const Xchg_VertexPtr& vertex) {
     Xchg_PointPtr point = vertex->GetGeom();
     int pointId = 0;
     if (point) {
-        pointId = m_mapper->GetOrAllocate(point);
-        if (!m_mapper->HasMapping(point) || pointId == m_mapper->GetMapping(point)) {
-            // 需要写出 Point
+        if (m_mapper->HasMapping(point)) {
+            pointId = m_mapper->GetMapping(point);
+        } else {
+            pointId = m_mapper->GetOrAllocate(point);
             std::string entity = m_builder->BeginEntity(pointId, "CARTESIAN_POINT")
                 .AddString("")
                 .AddRealArray({point->x(), point->y(), point->z()})
