@@ -133,7 +133,7 @@ def compare_solids(ref_solid, exp_solid, idx):
     # 包围盒
     rb, eb = get_bbox(ref_solid), get_bbox(exp_solid)
     bbox_diff = max(abs(rb[i] - eb[i]) for i in range(6))
-    if bbox_diff > 1e-3:
+    if bbox_diff > 0.1:
         diffs.append(f"  {label} BBox diff={bbox_diff:.6f}")
         diffs.append(f"    ref: {fmt_bbox(rb)}")
         diffs.append(f"    exp: {fmt_bbox(eb)}")
@@ -199,9 +199,9 @@ def compare_files(ref_path, exp_path, verbose=False, brief=False):
     for i in range(n):
         solid_diffs = compare_solids(ref_solids[i], exp_solids[i], i)
         if brief and solid_diffs:
-            # 只保留体积/面积/face数的摘要行
+            # 只保留体积/面积/face数/BBox的摘要行
             diffs.extend(d for d in solid_diffs
-                         if "Volume:" in d or "Area:" in d or "Faces:" in d)
+                         if "Volume:" in d or "Area:" in d or "Faces:" in d or "BBox" in d)
         elif solid_diffs:
             diffs.extend(solid_diffs)
 

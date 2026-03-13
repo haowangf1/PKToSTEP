@@ -2,7 +2,9 @@
 STEP 批量导入导出验证脚本
 
 用法:
-  python scripts/batch_test.py <step目录> [--exe <PKToSTEP路径>] [--output-dir <结果目录>]
+  python scripts/batch_test.py [step目录] [--exe <PKToSTEP路径>] [--output-dir <结果目录>]
+
+  不给 step目录 时默认用项目的 resource/ 目录
 
 结果:
   passed.txt  - 通过的文件名（每行一个）
@@ -19,15 +21,16 @@ import argparse
 sys.path.insert(0, os.path.dirname(__file__))
 from step_compare import compare_files
 
+# 项目根目录
+PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+DEFAULT_EXE = os.path.join(PROJECT_ROOT, "build", "Debug", "Debug", "PKToSTEP.exe")
+DEFAULT_STEP_DIR = os.path.join(PROJECT_ROOT, "resource")
+DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "stepexport")
+
 
 def find_exe():
-    candidates = [
-        os.path.join(os.path.dirname(__file__), "..", "build", "Debug", "Debug", "PKToSTEP.exe"),
-        os.path.join("build", "Debug", "Debug", "PKToSTEP.exe"),
-    ]
-    for c in candidates:
-        if os.path.exists(c):
-            return os.path.abspath(c)
+    if os.path.exists(DEFAULT_EXE):
+        return os.path.abspath(DEFAULT_EXE)
     return None
 
 
@@ -50,15 +53,19 @@ def collect_files(step_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="STEP batch export & compare")
-    parser.add_argument("step_dir", help="Directory containing .step/.stp files")
+    parser.add_argument("step_dir", nargs="?", default=DEFAULT_STEP_DIR,
+                        help="Directory containing .step/.stp files (default: resource/)")
     parser.add_argument("--exe", default=None, help="Path to PKToSTEP.exe")
-    parser.add_argument("--output-dir", default=".", help="Output directory for result files")
+    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help="Output directory for result files")
     args = parser.parse_args()
 
     exe = args.exe or find_exe()
     if not exe:
-        print("[ERROR] PKToSTEP.exe not found. Use --exe to specify.")
+        print(f"[ERROR] PKToSTEP.exe not found at {DEFAULT_EXE}. Use --exe to specify.")
         sys.exit(1)
+
+    # 确保输出目录存在
+    os.makedirs(args.output_dir, exist_ok=True)
 
     files = collect_files(args.step_dir)
     print(f"Exe: {exe}")
@@ -73,13 +80,14 @@ def main():
     for i, fpath in enumerate(files):
         fname = os.path.basename(fpath)
         stem = os.path.splitext(fname)[0]
-        export_name = f"{stem}_export.step"
+        export_name = os.path.join(args.output_dir, f"{stem}_export.step")
         tag = f"[{i+1}/{len(files)}]"
 
-        # 1. 导出
+        # 1. 导出（cwd 设为 output-dir，使 exe 输出到该目录）
         try:
             result = subprocess.run(
-                [exe, fpath], capture_output=True, text=True, timeout=120)
+                [exe, fpath], capture_output=True, text=True, timeout=120,
+                cwd=args.output_dir)
         except subprocess.TimeoutExpired:
             print(f"{tag} FAIL {fname}: export timeout")
             failed_list.append((fname, "export timeout"))
@@ -105,9 +113,9 @@ def main():
         except Exception as e:
             passed, summary = False, f"compare error: {e}"
 
-        # 清理导出文件
-        if os.path.exists(export_name):
-            os.remove(export_name)
+        # 清理导出文件（注释掉以便手动查看）
+        # if os.path.exists(export_name):
+        #     os.remove(export_name)
 
         if passed is None:
             # OCC 读不了原始文件
