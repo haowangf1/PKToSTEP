@@ -316,7 +316,7 @@ int XchgToSTEPWriter::WriteEdge(const Xchg_EdgePtr& edge) {
         .AddEntityRef(startVertexId)
         .AddEntityRef(endVertexId)
         .AddEntityRef(curveId)
-        .AddBoolean(true)  // same_sense
+        .AddBoolean(edge->GetSameSense())  // same_sense
         .Build();
     WriteEntity(entity);
 
