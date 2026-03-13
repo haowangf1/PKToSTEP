@@ -9,12 +9,16 @@
 #include "geom/surface/xchg_sphericalsurface.hpp"
 #include "geom/surface/xchg_toroidalsurface.hpp"
 #include "geom/surface/xchg_nurbssurface.hpp"
+#include "geom/surface/xchg_revolutionsurface.hpp"
+#include "geom/surface/xchg_linearextrusionsurface.hpp"
+#include "geom/surface/xchg_offsetsurface.hpp"
 
 #include "geom/curve/xchg_curve.hpp"
 #include "geom/curve/xchg_line.hpp"
 #include "geom/curve/xchg_ellipse.hpp"
 #include "geom/curve/xchg_nurbscurve.hpp"
 #include "geom/curve/xchg_polyline.hpp"
+#include "geom/curve/xchg_offsetcurve.hpp"
 
 #include "geom/xchg_point.hpp"
 #include "base/xchg_dir.hpp"
@@ -78,6 +82,27 @@ int XchgToSTEPWriter::WriteSurface(const Xchg_SurfacePtr& surface) {
             Xchg_NurbsSurface* nurbs = dynamic_cast<Xchg_NurbsSurface*>(surface.get());
             if (nurbs) {
                 surfaceId = WriteNurbsSurface(nurbs);
+            }
+            break;
+        }
+        case XCHG_TYPE_REVOLUTION_SURFACE: {
+            Xchg_RevolutionSurface* rev = dynamic_cast<Xchg_RevolutionSurface*>(surface.get());
+            if (rev) {
+                surfaceId = WriteRevolutionSurface(rev);
+            }
+            break;
+        }
+        case XCHG_TYPE_LINEAR_EXTRUSION_SURFACE: {
+            Xchg_LinearExtrusionSurface* ext = dynamic_cast<Xchg_LinearExtrusionSurface*>(surface.get());
+            if (ext) {
+                surfaceId = WriteLinearExtrusionSurface(ext);
+            }
+            break;
+        }
+        case XCHG_TYPE_OFFSET_SURFACE: {
+            Xchg_OffsetSurface* offset = dynamic_cast<Xchg_OffsetSurface*>(surface.get());
+            if (offset) {
+                surfaceId = WriteOffsetSurface(offset);
             }
             break;
         }
@@ -397,6 +422,13 @@ int XchgToSTEPWriter::WriteCurve(const Xchg_CurvePtr& curve) {
             }
             break;
         }
+        case XCHG_TYPE_OFFSET_CURVE_3D: {
+            Xchg_OffsetCurve* offset = dynamic_cast<Xchg_OffsetCurve*>(curve.get());
+            if (offset) {
+                curveId = WriteOffsetCurve(offset);
+            }
+            break;
+        }
         default:
             std::cerr << "[Warning] Unsupported curve type: " << curveType << std::endl;
             break;
@@ -616,3 +648,103 @@ int XchgToSTEPWriter::WritePolyline(Xchg_Polyline* polyline) {
     return polylineId;
 }
 
+int XchgToSTEPWriter::WriteRevolutionSurface(Xchg_RevolutionSurface* rev) {
+    if (!rev) return 0;
+
+    // 写出被旋转的曲线
+    Xchg_CurvePtr revolvedCurve = rev->GetRevolvedCurve();
+    int curveId = WriteCurve(revolvedCurve);
+    if (curveId == 0) return 0;
+
+    // 写出旋转轴 AXIS1_PLACEMENT（位置 + 方向）
+    const Xchg_pnt& pos = rev->GetAxisPosition();
+    const Xchg_dir& axis = rev->GetRevolutionAxis();
+
+    int locId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(locId, "CARTESIAN_POINT")
+        .AddString("").AddRealArray({pos.x(), pos.y(), pos.z()}).Build());
+
+    int dirId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(dirId, "DIRECTION")
+        .AddString("").AddRealArray({axis.x(), axis.y(), axis.z()}).Build());
+
+    int axisId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(axisId, "AXIS1_PLACEMENT")
+        .AddString("").AddEntityRef(locId).AddEntityRef(dirId).Build());
+
+    // 写出 SURFACE_OF_REVOLUTION
+    int surfId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(surfId, "SURFACE_OF_REVOLUTION")
+        .AddString("").AddEntityRef(curveId).AddEntityRef(axisId).Build());
+
+    return surfId;
+}
+
+int XchgToSTEPWriter::WriteLinearExtrusionSurface(Xchg_LinearExtrusionSurface* ext) {
+    if (!ext) return 0;
+
+    // 写出被拉伸的曲线
+    Xchg_CurvePtr extrudedCurve = ext->GetExtrudedCurve();
+    int curveId = WriteCurve(extrudedCurve);
+    if (curveId == 0) return 0;
+
+    // 写出拉伸方向 VECTOR = DIRECTION + magnitude
+    const Xchg_dir& axis = ext->GetExtrusionAxis();
+
+    int dirId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(dirId, "DIRECTION")
+        .AddString("").AddRealArray({axis.x(), axis.y(), axis.z()}).Build());
+
+    int vecId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(vecId, "VECTOR")
+        .AddString("").AddEntityRef(dirId).AddReal(1.0).Build());
+
+    // 写出 SURFACE_OF_LINEAR_EXTRUSION
+    int surfId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(surfId, "SURFACE_OF_LINEAR_EXTRUSION")
+        .AddString("").AddEntityRef(curveId).AddEntityRef(vecId).Build());
+
+    return surfId;
+}
+
+int XchgToSTEPWriter::WriteOffsetSurface(Xchg_OffsetSurface* offset) {
+    if (!offset) return 0;
+
+    // 写出基础曲面
+    Xchg_SurfacePtr basisSurface = offset->GetSurface();
+    int basisId = WriteSurface(basisSurface);
+    if (basisId == 0) return 0;
+
+    double dist = offset->GetOffset();
+
+    // 写出 OFFSET_SURFACE
+    int surfId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(surfId, "OFFSET_SURFACE")
+        .AddString("").AddEntityRef(basisId).AddReal(dist).AddBoolean(false).Build());
+
+    return surfId;
+}
+
+int XchgToSTEPWriter::WriteOffsetCurve(Xchg_OffsetCurve* offset) {
+    if (!offset) return 0;
+
+    // 写出基础曲线
+    Xchg_CurvePtr basisCurve = offset->GetCurve();
+    int basisId = WriteCurve(basisCurve);
+    if (basisId == 0) return 0;
+
+    double dist = offset->GetOffset();
+
+    // OFFSET_CURVE_3D 需要参考方向，使用 Z 轴作为默认
+    int dirId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(dirId, "DIRECTION")
+        .AddString("").AddRealArray({0.0, 0.0, 1.0}).Build());
+
+    // 写出 OFFSET_CURVE_3D
+    int curveId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(curveId, "OFFSET_CURVE_3D")
+        .AddString("").AddEntityRef(basisId).AddReal(dist)
+        .AddBoolean(false).AddEntityRef(dirId).Build());
+
+    return curveId;
+}

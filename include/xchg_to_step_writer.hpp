@@ -32,10 +32,14 @@ class Xchg_ConicalSurface;
 class Xchg_SphericalSurface;
 class Xchg_ToroidalSurface;
 class Xchg_NurbsSurface;
+class Xchg_RevolutionSurface;
+class Xchg_LinearExtrusionSurface;
+class Xchg_OffsetSurface;
 class Xchg_Line;
 class Xchg_Ellipse;
 class Xchg_NurbsCurve;
 class Xchg_Polyline;
+class Xchg_OffsetCurve;
 
 typedef SmartPtr<Xchg_MainDoc> Xchg_MainDocPtr;
 typedef SmartPtr<Xchg_Component> Xchg_ComponentPtr;
@@ -160,6 +164,9 @@ private:
     int WriteSphericalSurface(Xchg_SphericalSurface* sphere);
     int WriteToroidalSurface(Xchg_ToroidalSurface* torus);
     int WriteNurbsSurface(Xchg_NurbsSurface* nurbs);
+    int WriteRevolutionSurface(Xchg_RevolutionSurface* rev);
+    int WriteLinearExtrusionSurface(Xchg_LinearExtrusionSurface* ext);
+    int WriteOffsetSurface(Xchg_OffsetSurface* offset);
 
     // 具体曲线类型
     int WriteLine(Xchg_Line* line);
@@ -167,6 +174,7 @@ private:
     int WriteEllipse(Xchg_Ellipse* ellipse);
     int WriteNurbsCurve(Xchg_NurbsCurve* nurbs);
     int WritePolyline(Xchg_Polyline* polyline);
+    int WriteOffsetCurve(Xchg_OffsetCurve* offset);
 
     // 辅助函数
     void WriteEntity(const std::string& entity);

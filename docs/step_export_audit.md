@@ -52,11 +52,11 @@
 - C1: Point 去重逻辑简化，先检查 HasMapping 再 GetOrAllocate ✅
 - C3: Edge GetVertex 失败时打印警告并跳过 ✅
 
-### Step 3: 实现缺失几何类型（B1-B4）
-- WriteRevolutionSurface
-- WriteLinearExtrusionSurface
-OffsetSurface
-OffsetCurve
+### Step 3: 实现缺失几何类型（B1-B4） ✅
+- B1: WriteRevolutionSurface → SURFACE_OF_REVOLUTION + AXIS1_PLACEMENT ✅
+- B2: WriteLinearExtrusionSurface → SURFACE_OF_LINEAR_EXTRUSION + VECTOR ✅
+- B3: WriteOffsetSurface → OFFSET_SURFACE ✅
+- B4: WriteOffsetCurve → OFFSET_CURVE_3D ✅
 
 ### Step 5: 精度问题（D1）
 ---
