@@ -39,12 +39,13 @@ public:
     // 重置构建器
     void Reset();
 
+    // 辅助函数
+    static std::string FormatReal(double value);
+
 private:
     std::vector<std::string> m_buffer;
     bool m_firstParam = true;
 
-    // 辅助函数
-    static std::string FormatReal(double value);
     static std::string FormatString(const std::string& str);
     static std::string FormatEnum(const std::string& enumValue);
     static std::string FormatBoolean(bool value);

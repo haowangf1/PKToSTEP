@@ -322,7 +322,10 @@ int XchgToSTEPWriter::WriteNurbsSurface(Xchg_NurbsSurface* nurbs) {
     };
     auto writeRealArr = [&](const std::vector<double>& a) {
         *m_output << "(";
-        for (size_t i = 0; i < a.size(); ++i) { if (i) *m_output << ","; *m_output << a[i]; }
+        for (size_t i = 0; i < a.size(); ++i) {
+            if (i) *m_output << ",";
+            *m_output << STEPEntityBuilder::FormatReal(a[i]);
+        }
         *m_output << ")";
     };
 
@@ -346,7 +349,7 @@ int XchgToSTEPWriter::WriteNurbsSurface(Xchg_NurbsSurface* nurbs) {
             else *m_output << "(";
             for (int v = 0; v < numV; ++v) {
                 if (v > 0) *m_output << ",";
-                *m_output << nurbs->GetWeight(u, v);
+                *m_output << STEPEntityBuilder::FormatReal(nurbs->GetWeight(u, v));
             }
             *m_output << ")";
         }
@@ -577,7 +580,10 @@ int XchgToSTEPWriter::WriteNurbsCurve(Xchg_NurbsCurve* nurbs) {
     };
     auto writeRealArr = [&](const std::vector<double>& a) {
         *m_output << "(";
-        for (size_t i = 0; i < a.size(); ++i) { if (i) *m_output << ","; *m_output << a[i]; }
+        for (size_t i = 0; i < a.size(); ++i) {
+            if (i) *m_output << ",";
+            *m_output << STEPEntityBuilder::FormatReal(a[i]);
+        }
         *m_output << ")";
     };
 
@@ -598,7 +604,7 @@ int XchgToSTEPWriter::WriteNurbsCurve(Xchg_NurbsCurve* nurbs) {
         *m_output << "(";
         for (int i = 0; i < numPts; ++i) {
             if (i) *m_output << ",";
-            *m_output << nurbs->GetWeight(i);
+            *m_output << STEPEntityBuilder::FormatReal(nurbs->GetWeight(i));
         }
         *m_output << "))";
         *m_output << "REPRESENTATION_ITEM('')";
