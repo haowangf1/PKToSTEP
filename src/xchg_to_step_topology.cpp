@@ -72,13 +72,23 @@ int XchgToSTEPWriter::WriteBody(const Xchg_BodyPtr& body) {
 
         int outerShellId = WriteShell(outerShell, true);
 
-        // 收集内壳
+        // 收集内壳（STEP 要求用 ORIENTED_CLOSED_SHELL 包装）
         std::vector<int> voidShellIds;
         for (Xchg_Size_t i = 1; i < numShells; ++i) {
             Xchg_ShellPtr innerShell;
             lump->GetShell(i, innerShell);
             int innerShellId = WriteShell(innerShell, true);
-            voidShellIds.push_back(innerShellId);
+
+            // 包装为 ORIENTED_CLOSED_SHELL
+            int orientedShellId = m_mapper->AllocateNewId();
+            std::string ocsEntity = m_builder->BeginEntity(orientedShellId, "ORIENTED_CLOSED_SHELL")
+                .AddString("")
+                .AddDerived()
+                .AddEntityRef(innerShellId)
+                .AddEnum("T")
+                .Build();
+            WriteEntity(ocsEntity);
+            voidShellIds.push_back(orientedShellId);
         }
 
         int bodyId = m_mapper->AllocateNewId();
