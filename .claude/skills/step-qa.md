@@ -8,6 +8,8 @@ user_invocable: true
 
 ## 工作流程
 
+批量扫描发现异常 → OCC 定位无效面类型和错误类型 → 针对性对比 STEP 文本 → 修复 → 回归验证。比人工看渲染效果靠谱得多
+
 1. **批量扫描**：用 `scripts/batch_test.py` 对目标目录跑一遍导入导出对比
 2. **逐文件分析**：对 failed.txt 中的每个文件：
    a. 用 `scripts/step_compare.py` 获取详细差异（verbose 模式）
