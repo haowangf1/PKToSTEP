@@ -14,28 +14,50 @@
 #include <string>
 #include <vector>
 
-// Dump MainDoc 装配树（只打印父子关系）
-static void DumpComponent(const Xchg_ComponentPtr& comp, int depth)
-{
-    if (!comp) return;
-    std::string indent(depth * 2, ' ');
-    printf("%s[%s] nodes=%zu children=%zu\n",
-        indent.c_str(), comp->Name().c_str(),
-        comp->GetNumNodes(), comp->GetNumChildren());
-    for (Xchg_Size_t ci = 0; ci < comp->GetNumChildren(); ++ci) {
-        Xchg_ComponentInstancePtr inst = comp->GetChild(ci);
-        if (!inst || !inst->GetComponent()) continue;
-        DumpComponent(inst->GetComponent(), depth + 1);
-    }
-}
+// Dump MainDoc 装配树（打印父子关系和几何信息）
+// static void DumpComponent(const Xchg_ComponentPtr& comp, int depth)
+// {
+//     if (!comp) return;
+//     std::string indent(depth * 2, ' ');
+//     printf("%s[%s] nodes=%zu children=%zu\n",
+//         indent.c_str(), comp->Name().c_str(),
+//         comp->GetNumNodes(), comp->GetNumChildren());
+//     // 打印每个 node 的 lump 和 face 数量
+//     for (Xchg_Size_t ni = 0; ni < comp->GetNumNodes(); ++ni) {
+//         Xchg_NodePtr node = comp->GetNodeByIndex(ni);
+//         if (!node) continue;
+//         Xchg_BodyPtr body = node->GetBodyPtr();
+//         if (body) {
+//             printf("%s  node[%zu]: lumps=%zu\n",
+//                 indent.c_str(), ni, body->GetNumLumps());
+//             // 统计所有 face 数量
+//             Xchg_Size_t totalFaces = 0;
+//             for (Xchg_Size_t li = 0; li < body->GetNumLumps(); ++li) {
+//                 Xchg_LumpPtr lump = body->GetLump(li);
+//                 if (lump) {
+//                     for (Xchg_Size_t si = 0; si < lump->GetNumShells(); ++si) {
+//                         Xchg_ShellPtr shell = lump->GetShell(si);
+//                         if (shell) totalFaces += shell->GetNumFaces();
+//                     }
+//                 }
+//             }
+//             printf("%s    total faces=%zu\n", indent.c_str(), totalFaces);
+//         }
+//     }
+//     for (Xchg_Size_t ci = 0; ci < comp->GetNumChildren(); ++ci) {
+//         Xchg_ComponentInstancePtr inst = comp->GetChild(ci);
+//         if (!inst || !inst->GetComponent()) continue;
+//         DumpComponent(inst->GetComponent(), depth + 1);
+//     }
+// }
 
-static void DumpMainDoc(const Xchg_MainDocPtr& mainDoc)
-{
-    if (!mainDoc) return;
-    printf("\n===== MainDoc Assembly Tree =====\n");
-    DumpComponent(mainDoc->RootComponent(), 0);
-    printf("=================================\n\n");
-}
+// static void DumpMainDoc(const Xchg_MainDocPtr& mainDoc)
+// {
+//     if (!mainDoc) return;
+//     printf("\n===== MainDoc Assembly Tree =====\n");
+//     DumpComponent(mainDoc->RootComponent(), 0);
+//     printf("=================================\n\n");
+// }
 
 // 使用我们自己的 XchgToSTEPWriter 导出 MainDoc（支持完整装配体结构）
 void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
@@ -57,7 +79,7 @@ void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
 
     printf("[Info] Exporting MainDoc to: %s (via XchgToSTEPWriter)\n", output_path.c_str());
 
-    DumpMainDoc(*mainDoc);
+    //DumpMainDoc(*mainDoc);
 
     XchgToSTEPWriter writer(output_path);
     writer.SetPrecision(1e-6);
@@ -86,7 +108,7 @@ int main(int argc, char* argv[])
     if (argc > 1) {
         step_path = argv[1];
     } else {
-        step_path = base + "resource/assembly.step";
+        step_path = base + "resource/0065829.step";
     }
 
     // Extract filename stem for output path
@@ -120,6 +142,11 @@ int main(int argc, char* argv[])
 
     Xchg_MainDocPtr main_doc = Xchg_MainDoc::Create();
     stp_err = AMXT_STP_read(ctx, step_path.c_str(), &read_opts, &main_doc);
+
+    size_t err_instance = 0;
+    const char* err_msg = nullptr;
+    AMXT_STP_ERROR_ask_message(ctx, &err_instance, &err_msg);
+
     if (stp_err != AMXT_STP_ERROR_no_errors) {
         size_t err_instance = 0;
         const char* err_msg = nullptr;
@@ -134,6 +161,11 @@ int main(int argc, char* argv[])
 
     // Export the MainDoc to STEP file
     Export_step(&main_doc, step_path);
+
+
+
+
+#if 0 //pk转x流程
 
     // 3. Get root component, iterate nodes to find Body nodes
     const Xchg_ComponentPtr& root = main_doc->RootComponent();
@@ -250,5 +282,7 @@ int main(int argc, char* argv[])
     AMXT_STP_CTX_destory(ctx);
     StopSession();
     printf("[Info] Done.\n");
+
+#endif
     return 0;
 }

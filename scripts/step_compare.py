@@ -169,67 +169,79 @@ def compare_solids(ref_solid, exp_solid, idx):
     return diffs
 
 
+def compare_files(ref_path, exp_path, verbose=False, brief=False):
+    """对比两个 STEP 文件，返回 (passed: bool, summary: str)。
+    brief=True 时只返回 solid 级摘要（体积/面积误差），不含 face-level diff。
+    可被其他脚本 import 调用。"""
+    ref_shape = read_step(ref_path)
+    if ref_shape is None:
+        return None, "OCC cannot read original"
+
+    exp_shape = read_step(exp_path)
+    if exp_shape is None:
+        return False, "OCC cannot read export"
+
+    diffs = []
+
+    # solid 数
+    rs = count_topo(ref_shape, TopAbs_SOLID)
+    es = count_topo(exp_shape, TopAbs_SOLID)
+    if rs != es:
+        diffs.append(f"solids: ref={rs} exp={es}")
+
+    # 逐 solid 对比
+    ref_solids = get_solids(ref_shape)
+    exp_solids = get_solids(exp_shape)
+    ref_solids.sort(key=lambda s: -abs(get_volume(s)))
+    exp_solids.sort(key=lambda s: -abs(get_volume(s)))
+
+    n = min(len(ref_solids), len(exp_solids))
+    for i in range(n):
+        solid_diffs = compare_solids(ref_solids[i], exp_solids[i], i)
+        if brief and solid_diffs:
+            # 只保留体积/面积/face数的摘要行
+            diffs.extend(d for d in solid_diffs
+                         if "Volume:" in d or "Area:" in d or "Faces:" in d)
+        elif solid_diffs:
+            diffs.extend(solid_diffs)
+
+    passed = len(diffs) == 0
+    summary = "; ".join(diffs) if diffs else "OK"
+
+    if verbose:
+        # 打印详细信息（和原来 main 一样）
+        print(f"Reference: {ref_path}")
+        print(f"Exported:  {exp_path}")
+        print()
+        print("=== Overall Comparison ===")
+        for name, shape in [("REF", ref_shape), ("EXP", exp_shape)]:
+            v = get_volume(shape)
+            a = get_area(shape)
+            bb = get_bbox(shape)
+            ns = count_topo(shape, TopAbs_SOLID)
+            nf = count_topo(shape, TopAbs_FACE)
+            ne = count_topo(shape, TopAbs_EDGE)
+            print(f"  {name}: solids={ns} faces={nf} edges={ne} "
+                  f"vol={v:.4f} area={a:.4f} bbox={fmt_bbox(bb)}")
+        print()
+        if passed:
+            print("=== ALL SOLIDS MATCH ===")
+        else:
+            print("=== DIFFERENCES FOUND ===")
+            for d in diffs:
+                print(d)
+
+    return passed, summary
+
+
 def main():
     if len(sys.argv) < 3:
         print(f"Usage: {sys.argv[0]} <original.step> <exported.step>")
         sys.exit(1)
 
     ref_path, exp_path = sys.argv[1], sys.argv[2]
-    print(f"Reference: {ref_path}")
-    print(f"Exported:  {exp_path}")
-    print()
-
-    ref_shape = read_step(ref_path)
-    exp_shape = read_step(exp_path)
-    if ref_shape is None or exp_shape is None:
-        sys.exit(1)
-
-    # 整体对比
-    print("=== Overall Comparison ===")
-    for name, shape in [("REF", ref_shape), ("EXP", exp_shape)]:
-        v = get_volume(shape)
-        a = get_area(shape)
-        bb = get_bbox(shape)
-        ns = count_topo(shape, TopAbs_SOLID)
-        nf = count_topo(shape, TopAbs_FACE)
-        ne = count_topo(shape, TopAbs_EDGE)
-        print(f"  {name}: solids={ns} faces={nf} edges={ne} "
-              f"vol={v:.4f} area={a:.4f} bbox={fmt_bbox(bb)}")
-    print()
-
-    # 逐 solid 对比
-    ref_solids = get_solids(ref_shape)
-    exp_solids = get_solids(exp_shape)
-
-    if len(ref_solids) != len(exp_solids):
-        print(f"[DIFF] Solid count: ref={len(ref_solids)} exp={len(exp_solids)}")
-
-    # 按体积排序配对
-    ref_solids.sort(key=lambda s: -abs(get_volume(s)))
-    exp_solids.sort(key=lambda s: -abs(get_volume(s)))
-
-    print(f"=== Per-Solid Comparison ({min(len(ref_solids), len(exp_solids))} pairs) ===")
-    all_diffs = []
-    n = min(len(ref_solids), len(exp_solids))
-    for i in range(n):
-        diffs = compare_solids(ref_solids[i], exp_solids[i], i)
-        if diffs:
-            all_diffs.extend(diffs)
-        else:
-            rv = get_volume(ref_solids[i])
-            nf = count_topo(ref_solids[i], TopAbs_FACE)
-            print(f"  Solid[{i}]: OK (vol={rv:.4f}, faces={nf})")
-
-    if all_diffs:
-        print()
-        print("=== DIFFERENCES FOUND ===")
-        for d in all_diffs:
-            print(d)
-    else:
-        print()
-        print("=== ALL SOLIDS MATCH ===")
-
-    sys.exit(1 if all_diffs else 0)
+    passed, _ = compare_files(ref_path, exp_path, verbose=True)
+    sys.exit(0 if passed else 1)
 
 
 if __name__ == "__main__":
