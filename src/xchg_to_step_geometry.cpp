@@ -505,6 +505,7 @@ int XchgToSTEPWriter::WriteNurbsCurve(Xchg_NurbsCurve* nurbs) {
     int degree = nurbs->GetDegree();
     int numPts = nurbs->GetNumPoints();
     bool isRational = nurbs->IsRational();
+    bool isClosed = nurbs->IsClosed();
 
     // 写出控制点
     std::vector<int> cpIds;
@@ -554,7 +555,7 @@ int XchgToSTEPWriter::WriteNurbsCurve(Xchg_NurbsCurve* nurbs) {
         *m_output << "BOUNDED_CURVE()";
         *m_output << "B_SPLINE_CURVE(" << degree << ",";
         writeCPs();
-        *m_output << ",.UNSPECIFIED.,.F.,.F.)";
+        *m_output << ",.UNSPECIFIED.," << (isClosed ? ".T." : ".F.") << ",.F.)";
         *m_output << "B_SPLINE_CURVE_WITH_KNOTS(";
         writeIntArr(mults); *m_output << ",";
         writeRealArr(knots);
@@ -575,7 +576,7 @@ int XchgToSTEPWriter::WriteNurbsCurve(Xchg_NurbsCurve* nurbs) {
         *m_output << "#" << nurbsId << "=B_SPLINE_CURVE_WITH_KNOTS('',";
         *m_output << degree << ",";
         writeCPs();
-        *m_output << ",.UNSPECIFIED.,.F.,.F.,";
+        *m_output << ",.UNSPECIFIED.," << (isClosed ? ".T." : ".F.") << ",.F.,";
         writeIntArr(mults); *m_output << ",";
         writeRealArr(knots);
         *m_output << ",.UNSPECIFIED.);\n";
@@ -610,6 +611,7 @@ int XchgToSTEPWriter::WritePolyline(Xchg_Polyline* polyline) {
         .AddEntityArray(pointIds)
         .Build();
     WriteEntity(entity);
+    
 
     return polylineId;
 }

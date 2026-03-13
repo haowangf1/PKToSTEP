@@ -55,7 +55,7 @@ int XchgToSTEPWriter::WriteBody(const Xchg_BodyPtr& body) {
         Xchg_ShellPtr shell;
         lump->GetShell(0, shell);
 
-        int shellId = WriteShell(shell, true);  // 假设是闭合的
+        int shellId = WriteShell(shell, shell->IsClosed());
 
         int bodyId = m_mapper->AllocateNewId();
         std::string entity = m_builder->BeginEntity(bodyId, "MANIFOLD_SOLID_BREP")
@@ -70,14 +70,14 @@ int XchgToSTEPWriter::WriteBody(const Xchg_BodyPtr& body) {
         Xchg_ShellPtr outerShell;
         lump->GetShell(0, outerShell);
 
-        int outerShellId = WriteShell(outerShell, true);
+        int outerShellId = WriteShell(outerShell, outerShell->IsClosed());
 
         // 收集内壳（STEP 要求用 ORIENTED_CLOSED_SHELL 包装）
         std::vector<int> voidShellIds;
         for (Xchg_Size_t i = 1; i < numShells; ++i) {
             Xchg_ShellPtr innerShell;
             lump->GetShell(i, innerShell);
-            int innerShellId = WriteShell(innerShell, true);
+            int innerShellId = WriteShell(innerShell, innerShell->IsClosed());
 
             // 包装为 ORIENTED_CLOSED_SHELL
             int orientedShellId = m_mapper->AllocateNewId();
@@ -156,7 +156,7 @@ int XchgToSTEPWriter::WriteFace(const Xchg_FacePtr& face, bool faceOrientation) 
         Xchg_ErrorStatus err = face->GetLoop(i, loop);
 
         if (err == XCHG_OK && loop) {
-            bool isOuter = (i == 0);  // 第一个 loop 通常是外环
+            bool isOuter = loop->IsOuter();
             int boundId = WriteLoop(loop, isOuter);
             if (boundId > 0) {
                 boundIds.push_back(boundId);
