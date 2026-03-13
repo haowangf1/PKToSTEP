@@ -199,7 +199,7 @@ int XchgToSTEPWriter::WriteLoop(const Xchg_LoopPtr& loop, bool isOuter) {
     std::string entity = m_builder->BeginEntity(boundId, entityType)
         .AddString("")
         .AddEntityRef(edgeLoopId)
-        .AddBoolean(true)  // orientation，通常为 true
+        .AddBoolean(loop->GetOrientation()) 
         .Build();
     WriteEntity(entity);
 
