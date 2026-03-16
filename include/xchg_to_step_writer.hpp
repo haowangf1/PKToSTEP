@@ -40,6 +40,8 @@ class Xchg_Ellipse;
 class Xchg_NurbsCurve;
 class Xchg_Polyline;
 class Xchg_OffsetCurve;
+class Xchg_Parabola;
+class Xchg_Hyperbola;
 
 typedef SmartPtr<Xchg_MainDoc> Xchg_MainDocPtr;
 typedef SmartPtr<Xchg_Component> Xchg_ComponentPtr;
@@ -175,6 +177,8 @@ private:
     int WriteNurbsCurve(Xchg_NurbsCurve* nurbs);
     int WritePolyline(Xchg_Polyline* polyline);
     int WriteOffsetCurve(Xchg_OffsetCurve* offset);
+    int WriteParabola(Xchg_Parabola* parabola);
+    int WriteHyperbola(Xchg_Hyperbola* hyperbola);
 
     // 辅助函数
     void WriteEntity(const std::string& entity);

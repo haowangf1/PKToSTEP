@@ -113,8 +113,9 @@ int main(int argc, char* argv[])
     std::string step_path;
     if (argc > 1) {
         step_path = argv[1];
+        
     } else {
-        step_path = base + "resource/100106_7f144e5b_0000.step";
+        step_path = base + "resource/pmjg_20201218233302.stp";
     }
 
     // Extract filename stem for output path
@@ -152,7 +153,13 @@ int main(int argc, char* argv[])
     size_t err_instance = 0;
     const char* err_msg = nullptr;
     AMXT_STP_ERROR_ask_message(ctx, &err_instance, &err_msg);
+    if(err_instance>0)
+    {
+        fprintf(stderr, "[Error] AMXT_STP_read failed\n");
+       // return -1;
+    }
 
+    AMXT_STP_ERROR_ask_message(ctx, &err_instance, &err_msg);
     if (stp_err != AMXT_STP_ERROR_no_errors) {
         size_t err_instance = 0;
         const char* err_msg = nullptr;

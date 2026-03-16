@@ -1,4 +1,4 @@
-#include "../include/xchg_to_step_writer.hpp"
+﻿#include "../include/xchg_to_step_writer.hpp"
 #include "../include/step_entity_builder.hpp"
 #include "../include/xchg_entity_mapper.hpp"
 
@@ -19,6 +19,9 @@
 #include "geom/curve/xchg_nurbscurve.hpp"
 #include "geom/curve/xchg_polyline.hpp"
 #include "geom/curve/xchg_offsetcurve.hpp"
+
+#include "geom/curve/xchg_parabola.hpp"
+#include "geom/curve/xchg_hyperbola.hpp"
 
 #include "geom/xchg_point.hpp"
 #include "base/xchg_dir.hpp"
@@ -432,10 +435,24 @@ int XchgToSTEPWriter::WriteCurve(const Xchg_CurvePtr& curve) {
             }
             break;
         }
+        case XCHG_TYPE_PARABOLA: {
+            Xchg_Parabola* parabola = dynamic_cast<Xchg_Parabola*>(curve.get());
+            if (parabola) {
+                curveId = WriteParabola(parabola);
+            }
+            break;
+        }
+        case XCHG_TYPE_HYPERBOLA: {
+            Xchg_Hyperbola* hyperbola = dynamic_cast<Xchg_Hyperbola*>(curve.get());
+            if (hyperbola) {
+                curveId = WriteHyperbola(hyperbola);
+            }
+            break;
+        }
         default:
             std::cerr << "[Warning] Unsupported curve type: " << curveType << std::endl;
             break;
-    }
+        }
 
     if (curveId > 0) {
         m_mapper->SetMapping(curve, curveId);  // 记录映射
@@ -753,4 +770,58 @@ int XchgToSTEPWriter::WriteOffsetCurve(Xchg_OffsetCurve* offset) {
         .AddBoolean(false).AddEntityRef(dirId).Build());
 
     return curveId;
+}
+
+int XchgToSTEPWriter::WriteParabola(Xchg_Parabola* parabola) {
+    if (!parabola) return 0;
+
+    // PARABOLA("", AXIS2_PLACEMENT_3D, focal_dist)
+    // z = normal, x = opening direction (Xref)
+    Xchg_pnt center  = parabola->GetCenterPoint();
+    Xchg_dir normal  = parabola->GetNormalDirection();
+    Xchg_dir xdir    = parabola->GetXDirection();
+    double focalDist = parabola->GetFocalDistance();
+
+    int axisId = WriteAxis2Placement3D(
+        center.x(), center.y(), center.z(),
+        normal.x(), normal.y(), normal.z(),
+        xdir.x(),   xdir.y(),   xdir.z()
+    );
+
+    int parabolaId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(parabolaId, "PARABOLA")
+        .AddString("")
+        .AddEntityRef(axisId)
+        .AddReal(focalDist)
+        .Build());
+
+    return parabolaId;
+}
+
+int XchgToSTEPWriter::WriteHyperbola(Xchg_Hyperbola* hyperbola) {
+    if (!hyperbola) return 0;
+
+    // HYPERBOLA("", AXIS2_PLACEMENT_3D, semi_axis, semi_imag_axis)
+    // z = normal, x = real axis direction
+    Xchg_pnt center    = hyperbola->GetCenterPoint();
+    Xchg_dir normal    = hyperbola->GetNormalDirection();
+    Xchg_dir xdir      = hyperbola->GetXDirection();
+    double semiAxis    = hyperbola->GetSemiAxis();
+    double semiImgAxis = hyperbola->GetSemiImageAxis();
+
+    int axisId = WriteAxis2Placement3D(
+        center.x(), center.y(), center.z(),
+        normal.x(), normal.y(), normal.z(),
+        xdir.x(),   xdir.y(),   xdir.z()
+    );
+
+    int hyperbolaId = m_mapper->AllocateNewId();
+    WriteEntity(m_builder->BeginEntity(hyperbolaId, "HYPERBOLA")
+        .AddString("")
+        .AddEntityRef(axisId)
+        .AddReal(semiAxis)
+        .AddReal(semiImgAxis)
+        .Build());
+
+    return hyperbolaId;
 }
