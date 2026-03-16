@@ -81,7 +81,7 @@ void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
     std::string stem = (ext_pos != std::string::npos) ? filename.substr(0, ext_pos) : filename;
 
     // 生成输出文件名：原文件名 + _export.step
-    std::string output_path =  "stepexport/" + stem + "_export.step";
+    std::string output_path =  stem + "_export.step";
 
     printf("[Info] Exporting MainDoc to: %s (via XchgToSTEPWriter)\n", output_path.c_str());
 

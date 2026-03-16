@@ -19,7 +19,45 @@ import argparse
 
 # 让 import step_compare 能找到同目录
 sys.path.insert(0, os.path.dirname(__file__))
-from step_compare import compare_files
+from step_compare import compare_files, read_step
+
+from OCP.BRepCheck import BRepCheck_Analyzer
+from OCP.TopExp import TopExp_Explorer
+from OCP.TopAbs import TopAbs_SOLID, TopAbs_FACE
+from OCP.TopoDS import TopoDS
+
+
+def check_validity(step_path):
+    """检查导出文件中所有 solid/face 的有效性，返回 (valid, summary)"""
+    shape = read_step(step_path)
+    if shape is None:
+        return False, "OCC cannot read export"
+
+    # 检查是否有 solid
+    exp_s = TopExp_Explorer(shape, TopAbs_SOLID)
+    solid_count = 0
+    while exp_s.More():
+        solid_count += 1
+        exp_s.Next()
+    if solid_count == 0:
+        return False, "no solids in export"
+
+    # 检查每个 face 的有效性
+    invalid_faces = 0
+    total_faces = 0
+    exp_f = TopExp_Explorer(shape, TopAbs_FACE)
+    while exp_f.More():
+        face = TopoDS.Face_s(exp_f.Current())
+        total_faces += 1
+        analyzer = BRepCheck_Analyzer(face)
+        if not analyzer.IsValid():
+            invalid_faces += 1
+        exp_f.Next()
+
+    if invalid_faces > 0:
+        return False, f"{invalid_faces}/{total_faces} invalid faces"
+    return True, "OK"
+
 
 # 项目根目录
 PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -113,17 +151,23 @@ def main():
         except Exception as e:
             passed, summary = False, f"compare error: {e}"
 
-        # 清理导出文件
-        if os.path.exists(export_name):
-            os.remove(export_name)
+        # 清理导出文件（注释掉以便手动查看）
+        # if os.path.exists(export_name):
+        #     os.remove(export_name)
 
         if passed is None:
             # OCC 读不了原始文件
             print(f"{tag} SKIP {fname}: {summary}")
             skipped_list.append((fname, summary))
         elif passed:
-            print(f"{tag} PASS {fname}")
-            passed_list.append(fname)
+            # 对比通过后，检查导出文件的 face 有效性
+            valid, vsummary = check_validity(export_name)
+            if valid:
+                print(f"{tag} PASS {fname}")
+                passed_list.append(fname)
+            else:
+                print(f"{tag} FAIL {fname}: {vsummary}")
+                failed_list.append((fname, vsummary))
         else:
             print(f"{tag} FAIL {fname}: {summary}")
             failed_list.append((fname, summary))
