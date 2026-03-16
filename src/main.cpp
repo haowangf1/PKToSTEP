@@ -63,10 +63,16 @@
 void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
 {
     // 从输入路径提取文件名（不含扩展名）
-    auto name_start = input_step_path.rfind('/');
-    if (name_start == std::string::npos) {
-        name_start = input_step_path.rfind('\\');
-    }
+    // 取 '/' 和 '\\' 中最后出现的那个作为目录分隔符
+    auto pos_slash = input_step_path.rfind('/');
+    auto pos_bslash = input_step_path.rfind('\\');
+    auto name_start = std::string::npos;
+    if (pos_slash != std::string::npos && pos_bslash != std::string::npos)
+        name_start = std::max(pos_slash, pos_bslash);
+    else if (pos_slash != std::string::npos)
+        name_start = pos_slash;
+    else
+        name_start = pos_bslash;
     std::string filename = (name_start != std::string::npos)
                           ? input_step_path.substr(name_start + 1) : input_step_path;
 
@@ -75,7 +81,7 @@ void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
     std::string stem = (ext_pos != std::string::npos) ? filename.substr(0, ext_pos) : filename;
 
     // 生成输出文件名：原文件名 + _export.step
-    std::string output_path = stem + "_export.step";
+    std::string output_path =  "stepexport/" + stem + "_export.step";
 
     printf("[Info] Exporting MainDoc to: %s (via XchgToSTEPWriter)\n", output_path.c_str());
 
@@ -108,7 +114,7 @@ int main(int argc, char* argv[])
     if (argc > 1) {
         step_path = argv[1];
     } else {
-        step_path = base + "resource/0065829.step";
+        step_path = base + "resource/100106_7f144e5b_0000.step";
     }
 
     // Extract filename stem for output path

@@ -109,7 +109,7 @@ def main():
 
         # 2. OCC 对比（直接调用 step_compare）
         try:
-            passed, summary = compare_files(fpath, export_name, brief=True)~
+            passed, summary = compare_files(fpath, export_name, brief=True)
         except Exception as e:
             passed, summary = False, f"compare error: {e}"
 

@@ -58,7 +58,11 @@
 - B3: WriteOffsetSurface → OFFSET_SURFACE ✅
 - B4: WriteOffsetCurve → OFFSET_CURVE_3D ✅
 
-### Step 5: 精度问题（D1）
+### Step 5: 精度问题（D1） ✅
+- writeRealArr lambda 改用 `STEPEntityBuilder::FormatReal()` 输出13位精度 ✅
+- NURBS Surface/Curve 权重输出统一使用 `FormatReal()` ✅
+- `FormatReal` 从 private 移至 public 供外部调用 ✅
+
 ---
 
 ## 验证方法
