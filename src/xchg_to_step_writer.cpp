@@ -361,20 +361,22 @@ int XchgToSTEPWriter::WriteAxis2Placement3DFromTransfo(const Xchg_transfo& trsf)
         xd.x(), xd.y(), xd.z());
 }
 
-// 写出父子装配关系
+// 写出父子装配关系，返回 childPlacementId（供父 SR 实体数组使用）
 // 参考 step_nio STEPWriter_Actor::writeCDSR / writeItemDefinedTransformation
-void XchgToSTEPWriter::WriteAssemblyLink(int parentSrId, int parentPdId,
+int XchgToSTEPWriter::WriteAssemblyLink(int parentSrId, int parentPdId,
                                           int childSrId,  int childPdId,
                                           const Xchg_transfo& trsf) {
-    // AXIS2_PLACEMENT_3D for child placement
+    // trsf = GetTransform() = Compute_Transformation(identity, placement_in_step)
+    // 对于 IDT(A, B)，OCC 的变换语义是：把子从 B 空间变换到 A 空间
+    // 写 IDT(trsf_as_placement, identity) 让 OCC 把子从 identity 空间变换到 trsf 空间
     int childPlacementId = WriteAxis2Placement3DFromTransfo(trsf);
 
-    // ITEM_DEFINED_TRANSFORMATION
+    // ITEM_DEFINED_TRANSFORMATION: IDT(trsf, identity)
     int idtId = m_mapper->AllocateNewId();
     WriteEntity("#" + std::to_string(idtId) +
         "=ITEM_DEFINED_TRANSFORMATION(\'\',\'\',#" +
-        std::to_string(m_axis2Placement3DId) + ",#" +
-        std::to_string(childPlacementId) + ");\n");
+        std::to_string(childPlacementId) + ",#" +
+        std::to_string(m_axis2Placement3DId) + ");\n");
 
     // REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION (complex entity)
     int srrwtId = m_mapper->AllocateNewId();
@@ -405,6 +407,8 @@ void XchgToSTEPWriter::WriteAssemblyLink(int parentSrId, int parentPdId,
         "=CONTEXT_DEPENDENT_SHAPE_REPRESENTATION(#" +
         std::to_string(srrwtId) + ",#" +
         std::to_string(nauoPdsId) + ");\n");
+
+    return childPlacementId;
 }
 XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_ComponentPtr& comp) {
     ComponentIds result{0, 0};
@@ -419,7 +423,7 @@ XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_Compo
     int productDefId       = WriteProductDefinition(productDefFormId);
     int productDefShapeId  = WriteProductDefinitionShape(productDefId);
 
-    // 写出当前组件的几何（NodesPool 中所有 body）
+    // === 第一步：写出几何（body） ===
     std::vector<int> bodyIds;
     Xchg_Size_t numNodes = comp->GetNumNodes();
     for (Xchg_Size_t i = 0; i < numNodes; ++i) {
@@ -432,68 +436,103 @@ XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_Compo
         }
     }
 
-    // 所有 body 放入同一个 ADVANCED_BREP_SHAPE_REPRESENTATION
-    // 双层结构：SDR→SR，SR→ABSR（通过 SHAPE_REPRESENTATION_RELATIONSHIP）
-    // 这样 SRRWT 引用 SR，符合 AP214 规范，查看器兼容性更好
-    int shapeRepId = 0;
-    if (!bodyIds.empty()) {
-        std::vector<int> items = bodyIds;
-        items.push_back(m_axis2Placement3DId);
-        // 1. 写 ADVANCED_BREP_SHAPE_REPRESENTATION（存放实体几何）
-        int absrId = m_mapper->AllocateNewId();
-        WriteEntity(m_builder->BeginEntity(absrId, "ADVANCED_BREP_SHAPE_REPRESENTATION")
-            .AddString(compName)
-            .AddEntityArray(items)
-            .AddEntityRef(m_geometricRepContextId)
-            .Build());
-        // 2. 写 SHAPE_REPRESENTATION（装配占位 SR，作为子坐标空间）
-        shapeRepId = m_mapper->AllocateNewId();
-        WriteEntity(m_builder->BeginEntity(shapeRepId, "SHAPE_REPRESENTATION")
-            .AddString(compName)
-            .AddEntityArray({m_axis2Placement3DId})
-            .AddEntityRef(m_geometricRepContextId)
-            .Build());
-        // 3. 写 SHAPE_REPRESENTATION_RELATIONSHIP：SR → ABSR
-        int srrId = m_mapper->AllocateNewId();
-        WriteEntity("#" + std::to_string(srrId) +
-            "=SHAPE_REPRESENTATION_RELATIONSHIP('','',#" +
-            std::to_string(shapeRepId) + ",#" +
-            std::to_string(absrId) + ");\n");
-        // 4. SDR 指向 SR（而非 ABSR）
-        WriteShapeDefinitionRepresentation(productDefShapeId, shapeRepId);
-    } else {
-        // 纯装配节点：写一个空的 SHAPE_REPRESENTATION
-        shapeRepId = m_mapper->AllocateNewId();
-        std::string entity = m_builder->BeginEntity(shapeRepId, "SHAPE_REPRESENTATION")
-            .AddString(compName)
-            .AddEntityArray({m_axis2Placement3DId})
-            .AddEntityRef(m_geometricRepContextId)
-            .Build();
-        WriteEntity(entity);
-        WriteShapeDefinitionRepresentation(productDefShapeId, shapeRepId);
-    }
-
-    result.productDefId = productDefId;
-    result.shapeRepId   = shapeRepId;
-
-    // 递归处理子组件（装配结构）
+    // === 第二步：递归处理子组件，收集子 placement ID ===
+    // 必须在写 SR 之前完成，因为 AP214 要求父 SR 的实体数组包含所有子 placement。
+    struct ChildInfo {
+        ComponentIds ids;
+        int placementId;  // 已写好的 AXIS2_PLACEMENT_3D
+        int productDefId;
+    };
+    std::vector<ChildInfo> childInfos;
     Xchg_Size_t numChildren = comp->GetNumChildren();
     for (Xchg_Size_t i = 0; i < numChildren; ++i) {
         Xchg_ComponentInstancePtr inst = comp->GetChild(i);
         if (!inst) continue;
         Xchg_ComponentPtr childComp = inst->GetComponent();
         if (!childComp) continue;
+        ChildInfo ci;
+        ci.ids         = WriteComponent(childComp);
+        ci.productDefId = ci.ids.productDefId;
+        // 预写子 placement（变换）
+        ci.placementId = WriteAxis2Placement3DFromTransfo(inst->GetTransform());
+        childInfos.push_back(ci);
+    }
 
-        // 递归写出子组件
-        ComponentIds childIds = WriteComponent(childComp);
+    // === 第三步：写父 SR，items = identity + 所有子 placement ===
+    std::vector<int> srItems = {m_axis2Placement3DId};
+    for (auto& ci : childInfos) srItems.push_back(ci.placementId);
 
-        // 获取实例变换
-        Xchg_transfo trsf = inst->GetTransform();
+    int shapeRepId = 0;
+    if (!bodyIds.empty()) {
+        // 有几何：ABSR 存放实体，SR 作为装配占位
+        std::vector<int> absrItems = bodyIds;
+        absrItems.push_back(m_axis2Placement3DId);
+        int absrId = m_mapper->AllocateNewId();
+        WriteEntity(m_builder->BeginEntity(absrId, "ADVANCED_BREP_SHAPE_REPRESENTATION")
+            .AddString(compName)
+            .AddEntityArray(absrItems)
+            .AddEntityRef(m_geometricRepContextId)
+            .Build());
+        shapeRepId = m_mapper->AllocateNewId();
+        WriteEntity(m_builder->BeginEntity(shapeRepId, "SHAPE_REPRESENTATION")
+            .AddString(compName)
+            .AddEntityArray(srItems)
+            .AddEntityRef(m_geometricRepContextId)
+            .Build());
+        int srrId = m_mapper->AllocateNewId();
+        WriteEntity("#" + std::to_string(srrId) +
+            "=SHAPE_REPRESENTATION_RELATIONSHIP('','',#" +
+            std::to_string(shapeRepId) + ",#" +
+            std::to_string(absrId) + ");\n");
+        WriteShapeDefinitionRepresentation(productDefShapeId, shapeRepId);
+    } else {
+        // 纯装配节点
+        shapeRepId = m_mapper->AllocateNewId();
+        WriteEntity(m_builder->BeginEntity(shapeRepId, "SHAPE_REPRESENTATION")
+            .AddString(compName)
+            .AddEntityArray(srItems)
+            .AddEntityRef(m_geometricRepContextId)
+            .Build());
+        WriteShapeDefinitionRepresentation(productDefShapeId, shapeRepId);
+    }
 
-        // 写出装配关系
-        WriteAssemblyLink(shapeRepId, productDefId,
-                          childIds.shapeRepId, childIds.productDefId,
-                          trsf);
+    result.productDefId = productDefId;
+    result.shapeRepId   = shapeRepId;
+
+    // === 第四步：写 IDT + SRRWT + NAUO（复用已写好的子 placement）===
+    for (auto& ci : childInfos) {
+        // IDT(childPlacement, identity)
+        int idtId = m_mapper->AllocateNewId();
+        WriteEntity("#" + std::to_string(idtId) +
+            "=ITEM_DEFINED_TRANSFORMATION('','',#" +
+            std::to_string(ci.placementId) + ",#" +
+            std::to_string(m_axis2Placement3DId) + ");\n");
+        // SRRWT(childSR, parentSR, IDT)
+        int srrwtId = m_mapper->AllocateNewId();
+        WriteEntity("#" + std::to_string(srrwtId) +
+            "=(REPRESENTATION_RELATIONSHIP('','',#" +
+            std::to_string(ci.ids.shapeRepId) + ",#" +
+            std::to_string(shapeRepId) +
+            ")REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION(#" +
+            std::to_string(idtId) +
+            ")SHAPE_REPRESENTATION_RELATIONSHIP());\n");
+        // NAUO
+        int nauoId = m_mapper->AllocateNewId();
+        WriteEntity("#" + std::to_string(nauoId) +
+            "=NEXT_ASSEMBLY_USAGE_OCCURRENCE('','','',#" +
+            std::to_string(productDefId) + ",#" +
+            std::to_string(ci.productDefId) + ",$);\n");
+        // PDS
+        int pdsId = m_mapper->AllocateNewId();
+        WriteEntity("#" + std::to_string(pdsId) +
+            "=PRODUCT_DEFINITION_SHAPE('Placement','Placement of an item',#" +
+            std::to_string(nauoId) + ");\n");
+        // CDSR
+        int cdsrId = m_mapper->AllocateNewId();
+        WriteEntity("#" + std::to_string(cdsrId) +
+            "=CONTEXT_DEPENDENT_SHAPE_REPRESENTATION(#" +
+            std::to_string(srrwtId) + ",#" +
+            std::to_string(pdsId) + ");\n");
     }
 
     return result;

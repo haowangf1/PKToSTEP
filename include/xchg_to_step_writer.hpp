@@ -130,7 +130,7 @@ private:
     ComponentIds WriteComponent(const Xchg_ComponentPtr& comp);
 
     // 写出父子装配关系（NAUO + CDSR + IDT + SRRWT）
-    void WriteAssemblyLink(int parentSrId, int parentPdId,
+    int WriteAssemblyLink(int parentSrId, int parentPdId,
                            int childSrId, int childPdId,
                            const Xchg_transfo& trsf);
 
