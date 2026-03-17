@@ -1,4 +1,4 @@
-#include "../include/xchg_to_step_writer.hpp"
+﻿#include "../include/xchg_to_step_writer.hpp"
 #include "../include/step_entity_builder.hpp"
 #include "../include/xchg_entity_mapper.hpp"
 
@@ -367,16 +367,16 @@ int XchgToSTEPWriter::WriteAssemblyLink(int parentSrId, int parentPdId,
                                           int childSrId,  int childPdId,
                                           const Xchg_transfo& trsf) {
     // trsf = GetTransform() = Compute_Transformation(identity, placement_in_step)
-    // 对于 IDT(A, B)，OCC 的变换语义是：把子从 B 空间变换到 A 空间
-    // 写 IDT(trsf_as_placement, identity) 让 OCC 把子从 identity 空间变换到 trsf 空间
+    // 根据 OCC STEPConstruct_Assembly.cxx: ItemDef->Init(name, desc, Ax0=identity, AxLoc=child_placement)
+    // 即 IDT(identity, child_placement)
     int childPlacementId = WriteAxis2Placement3DFromTransfo(trsf);
 
-    // ITEM_DEFINED_TRANSFORMATION: IDT(trsf, identity)
+    // ITEM_DEFINED_TRANSFORMATION: IDT(identity, child_placement)
     int idtId = m_mapper->AllocateNewId();
     WriteEntity("#" + std::to_string(idtId) +
         "=ITEM_DEFINED_TRANSFORMATION(\'\',\'\',#" +
-        std::to_string(childPlacementId) + ",#" +
-        std::to_string(m_axis2Placement3DId) + ");\n");
+        std::to_string(m_axis2Placement3DId) + ",#" +
+        std::to_string(childPlacementId) + ");\n");
 
     // REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION (complex entity)
     int srrwtId = m_mapper->AllocateNewId();
@@ -501,12 +501,12 @@ XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_Compo
 
     // === 第四步：写 IDT + SRRWT + NAUO（复用已写好的子 placement）===
     for (auto& ci : childInfos) {
-        // IDT(childPlacement, identity)
+        // IDT(identity, child_placement)  -- OCC STEPConstruct_Assembly.cxx 标准写法
         int idtId = m_mapper->AllocateNewId();
         WriteEntity("#" + std::to_string(idtId) +
             "=ITEM_DEFINED_TRANSFORMATION('','',#" +
-            std::to_string(ci.placementId) + ",#" +
-            std::to_string(m_axis2Placement3DId) + ");\n");
+            std::to_string(m_axis2Placement3DId) + ",#" +
+            std::to_string(ci.placementId) + ");\n");
         // SRRWT(childSR, parentSR, IDT)
         int srrwtId = m_mapper->AllocateNewId();
         WriteEntity("#" + std::to_string(srrwtId) +
