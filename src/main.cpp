@@ -59,6 +59,125 @@
 //     printf("=================================\n\n");
 // }
 
+// ─────────────────────────────────────────────────────────────
+// Export_xt：递归收集 PK_BODY，考虑装配变换（原地变换到世界坐标）
+// 参考 amxt_stp/tests/debug/wzj.cpp 的实现逻辑
+// ─────────────────────────────────────────────────────────────
+static int g_xt_count = 0;
+static std::vector<PK_BODY_t> g_xt_bodies;
+
+static PK_ERROR_code_t SerializeNode_xt(
+    const Xchg_ComponentPtr& comp,
+    PK_TRANSF_t transfer)  // -1 表示无变换
+{
+    // 处理当前 component 的所有 body node
+    for (Xchg_Size_t i = 0; i < comp->GetNumNodes(); ++i) {
+        auto nodePtr = comp->GetNodeByIndex(i);
+        if (!nodePtr) continue;
+
+        PK_ERROR_code_t errCode = static_cast<PK_ERROR_code_t>(nodePtr->ConvertToPKBody());
+        if (errCode != PK_ERROR_no_errors) {
+            fprintf(stderr, "[Warn] Export_xt: ConvertToPKBody failed: %d\n", errCode);
+            continue;
+        }
+
+        PK_BODY_t pk_body = static_cast<PK_BODY_t>(nodePtr->GetParasolidBody());
+        if (!pk_body) continue;
+
+        // 应用装配变换（原地变换到世界坐标）
+        if (transfer != -1) {
+            PK_BODY_transform_o_t opts;
+            PK_BODY_transform_o_m(opts);
+            PK_TOPOL_track_r_t trsftracking{};
+            PK_TOPOL_local_r_t trsfresults{};
+            if (auto err = PK_BODY_transform_2(pk_body, transfer, 1e-10,
+                    &opts, &trsftracking, &trsfresults);
+                err != PK_ERROR_no_errors) {
+                fprintf(stderr, "[Warn] Export_xt: PK_BODY_transform_2 failed: %d\n", err);
+            }
+        }
+
+        // 去重后加入列表
+        if (std::find(g_xt_bodies.begin(), g_xt_bodies.end(), pk_body) == g_xt_bodies.end())
+            g_xt_bodies.push_back(pk_body);
+        ++g_xt_count;
+    }
+
+    // 递归处理子 component
+    for (Xchg_Size_t i = 0; i < comp->GetNumChildren(); ++i) {
+        Xchg_ComponentInstancePtr inst = comp->GetChild(i);
+        if (!inst || !inst->GetComponent()) continue;
+        PK_TRANSF_t trsf = 0;
+        inst->GetKernelTransf(trsf);
+        SerializeNode_xt(inst->GetComponent(), trsf);
+    }
+
+    return PK_ERROR_no_errors;
+}
+
+// 将 MainDoc（从 STEP 读入）转换为 PK_BODY 并导出 .x_t 文件
+// 输出到 xt/ 目录，文件名为 <stem>_export
+void Export_xt(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
+{
+    if (!mainDoc || !*mainDoc) return;
+
+    // 从输入路径提取文件名 stem
+    auto pos_slash  = input_step_path.rfind('/');
+    auto pos_bslash = input_step_path.rfind('\\');
+    auto name_start = std::string::npos;
+    if (pos_slash != std::string::npos && pos_bslash != std::string::npos)
+        name_start = std::max(pos_slash, pos_bslash);
+    else if (pos_slash  != std::string::npos) name_start = pos_slash;
+    else                                       name_start = pos_bslash;
+    std::string filename = (name_start != std::string::npos)
+                           ? input_step_path.substr(name_start + 1) : input_step_path;
+    auto ext_pos = filename.rfind('.');
+    std::string stem = (ext_pos != std::string::npos) ? filename.substr(0, ext_pos) : filename;
+
+    // 构建输出目录（exe所在目录的上三级/xt/）
+    // 使用当前工作目录下的 xt/ 子目录
+    std::string output_dir = "..\\..\\..\\xt\\"; // 相对 exe 路径
+    std::string output_path = output_dir + stem + "_export";
+
+    printf("[Info] Exporting MainDoc to XT: %s.x_t\n", output_path.c_str());
+
+    const Xchg_ComponentPtr& root = (*mainDoc)->RootComponent();
+    if (!root) {
+        fprintf(stderr, "[Error] Export_xt: no root component\n");
+        return;
+    }
+
+    // 重置全局状态
+    g_xt_count = 0;
+    g_xt_bodies.clear();
+
+    // 递归收集并变换所有 PK_BODY
+    SerializeNode_xt(root, -1);
+
+    printf("[Info] Export_xt: nodes=%d  unique bodies=%zu\n",
+           g_xt_count, g_xt_bodies.size());
+
+    if (g_xt_bodies.empty()) {
+        fprintf(stderr, "[Warn] Export_xt: no bodies to export\n");
+        return;
+    }
+
+    // PK_PART_t 数组（PK_BODY_t 和 PK_PART_t 都是 int，但类型要匹配）
+    std::vector<PK_PART_t> parts(g_xt_bodies.begin(), g_xt_bodies.end());
+
+    PK_PART_transmit_o_t opts;
+    PK_PART_transmit_o_m(opts);
+    opts.transmit_format = PK_transmit_format_text_c;
+
+    PK_ERROR_code_t err = PK_PART_transmit(
+        static_cast<int>(parts.size()), parts.data(),
+        output_path.c_str(), &opts);
+    if (err != PK_ERROR_no_errors)
+        fprintf(stderr, "[Error] Export_xt: PK_PART_transmit failed: %d\n", err);
+    else
+        printf("[Info] Export_xt: written to %s.x_t\n", output_path.c_str());
+}
+
 // 使用我们自己的 XchgToSTEPWriter 导出 MainDoc（支持完整装配体结构）
 void Export_step(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
 {
@@ -115,7 +234,7 @@ int main(int argc, char* argv[])
         step_path = argv[1];
         
     } else {
-        step_path = base + "resource/pmjg_20201218233302.stp";
+        step_path = base + "resource/tank.step";
     }
 
     // Extract filename stem for output path
@@ -174,6 +293,9 @@ int main(int argc, char* argv[])
 
     // Export the MainDoc to STEP file
     Export_step(&main_doc, step_path);
+
+    // Export the MainDoc to XT file (STEP -> Xchg -> PK_BODY -> XT)
+    Export_xt(&main_doc, step_path);
 
 
 

@@ -19,45 +19,7 @@ import argparse
 
 # 让 import step_compare 能找到同目录
 sys.path.insert(0, os.path.dirname(__file__))
-from step_compare import compare_files, read_step
-
-from OCP.BRepCheck import BRepCheck_Analyzer
-from OCP.TopExp import TopExp_Explorer
-from OCP.TopAbs import TopAbs_SOLID, TopAbs_FACE
-from OCP.TopoDS import TopoDS
-
-
-def check_validity(step_path):
-    """检查导出文件中所有 solid/face 的有效性，返回 (valid, summary)"""
-    shape = read_step(step_path)
-    if shape is None:
-        return False, "OCC cannot read export"
-
-    # 检查是否有 solid
-    exp_s = TopExp_Explorer(shape, TopAbs_SOLID)
-    solid_count = 0
-    while exp_s.More():
-        solid_count += 1
-        exp_s.Next()
-    if solid_count == 0:
-        return False, "no solids in export"
-
-    # 检查每个 face 的有效性
-    invalid_faces = 0
-    total_faces = 0
-    exp_f = TopExp_Explorer(shape, TopAbs_FACE)
-    while exp_f.More():
-        face = TopoDS.Face_s(exp_f.Current())
-        total_faces += 1
-        analyzer = BRepCheck_Analyzer(face)
-        if not analyzer.IsValid():
-            invalid_faces += 1
-        exp_f.Next()
-
-    if invalid_faces > 0:
-        return False, f"{invalid_faces}/{total_faces} invalid faces"
-    return True, "OK"
-
+from step_compare import compare_files
 
 # 项目根目录
 PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -94,7 +56,8 @@ def main():
     parser.add_argument("step_dir", nargs="?", default=DEFAULT_STEP_DIR,
                         help="Directory containing .step/.stp files (default: resource/)")
     parser.add_argument("--exe", default=None, help="Path to PKToSTEP.exe")
-    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help="Output directory for result files")
+    parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR,
+                        help="Output directory for result files")
     args = parser.parse_args()
 
     exe = args.exe or find_exe()
@@ -102,7 +65,6 @@ def main():
         print(f"[ERROR] PKToSTEP.exe not found at {DEFAULT_EXE}. Use --exe to specify.")
         sys.exit(1)
 
-    # 确保输出目录存在
     os.makedirs(args.output_dir, exist_ok=True)
 
     files = collect_files(args.step_dir)
@@ -121,7 +83,7 @@ def main():
         export_name = os.path.join(args.output_dir, f"{stem}_export.step")
         tag = f"[{i+1}/{len(files)}]"
 
-        # 1. 导出（cwd 设为 output-dir，使 exe 输出到该目录）
+        # 1. 导出（子进程，cwd 设为 output-dir）
         try:
             result = subprocess.run(
                 [exe, fpath], capture_output=True, text=True, timeout=120,
@@ -135,9 +97,12 @@ def main():
             failed_list.append((fname, f"export error: {e}"))
             continue
 
-        if result.returncode != 0:
-            print(f"{tag} FAIL {fname}: export failed (rc={result.returncode})")
-            failed_list.append((fname, f"export failed (rc={result.returncode})"))
+        rc = result.returncode
+        del result  # 立即释放 stdout/stderr 缓冲
+
+        if rc != 0:
+            print(f"{tag} FAIL {fname}: export failed (rc={rc})")
+            failed_list.append((fname, f"export failed (rc={rc})"))
             continue
 
         if not os.path.exists(export_name):
@@ -145,29 +110,19 @@ def main():
             failed_list.append((fname, "export file not found"))
             continue
 
-        # 2. OCC 对比（直接调用 step_compare）
-        try:
-            passed, summary = compare_files(fpath, export_name, brief=True)
-        except Exception as e:
-            passed, summary = False, f"compare error: {e}"
+        # 2. OCC 对比 + 有效性检查（在子进程中执行，主进程不持有任何 OCC 对象）
+        passed, summary = compare_files(fpath, export_name, brief=True)
 
-        # 清理导出文件（注释掉以便手动查看）
-        # if os.path.exists(export_name):
-        #     os.remove(export_name)
+        # 清理导出文件
+        if os.path.exists(export_name):
+            os.remove(export_name)
 
         if passed is None:
-            # OCC 读不了原始文件
             print(f"{tag} SKIP {fname}: {summary}")
             skipped_list.append((fname, summary))
         elif passed:
-            # 对比通过后，检查导出文件的 face 有效性
-            valid, vsummary = check_validity(export_name)
-            if valid:
-                print(f"{tag} PASS {fname}")
-                passed_list.append(fname)
-            else:
-                print(f"{tag} FAIL {fname}: {vsummary}")
-                failed_list.append((fname, vsummary))
+            print(f"{tag} PASS {fname}")
+            passed_list.append(fname)
         else:
             print(f"{tag} FAIL {fname}: {summary}")
             failed_list.append((fname, summary))
@@ -183,7 +138,7 @@ def main():
             f.write(name + "\n")
     with open(os.path.join(out, "failed.txt"), "w", encoding="utf-8") as f:
         for name, reason in failed_list:
-            f.write(name + "\n")
+            f.write(f"{name}\t{reason}\n")
     if skipped_list:
         with open(os.path.join(out, "skipped.txt"), "w", encoding="utf-8") as f:
             for name, reason in skipped_list:
