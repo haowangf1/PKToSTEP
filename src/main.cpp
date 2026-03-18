@@ -234,7 +234,7 @@ int main(int argc, char* argv[])
         step_path = argv[1];
         
     } else {
-        step_path = base + "resource/tank.step";
+        step_path = base + "resource/chip_FJ.step";
     }
 
     // Extract filename stem for output path
@@ -272,7 +272,7 @@ int main(int argc, char* argv[])
     size_t err_instance = 0;
     const char* err_msg = nullptr;
     AMXT_STP_ERROR_ask_message(ctx, &err_instance, &err_msg);
-    if(err_instance>0)
+    if(err_msg && strlen(err_msg)>0)
     {
         fprintf(stderr, "[Error] AMXT_STP_read failed\n");
        // return -1;
