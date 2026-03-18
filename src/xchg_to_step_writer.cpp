@@ -425,12 +425,15 @@ XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_Compo
 
     // === 第一步：写出几何（body） ===
     std::vector<int> bodyIds;
+    bool hasSheetBody = false;
     Xchg_Size_t numNodes = comp->GetNumNodes();
     for (Xchg_Size_t i = 0; i < numNodes; ++i) {
         Xchg_NodePtr node = comp->GetNodeByIndex(i);
         if (!node) continue;
         Xchg_BodyPtr body = node->GetBodyPtr();
         if (body) {
+            if (body->GetNumOpenShells() > 0)
+                hasSheetBody = true;
             int bodyId = WriteBody(body);
             if (bodyId > 0) bodyIds.push_back(bodyId);
         }
@@ -468,7 +471,10 @@ XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_Compo
         std::vector<int> absrItems = bodyIds;
         absrItems.push_back(m_axis2Placement3DId);
         int absrId = m_mapper->AllocateNewId();
-        WriteEntity(m_builder->BeginEntity(absrId, "ADVANCED_BREP_SHAPE_REPRESENTATION")
+        // Sheet body -> MANIFOLD_SURFACE_SHAPE_REPRESENTATION; solid -> ADVANCED_BREP_SHAPE_REPRESENTATION
+        std::string absrType = hasSheetBody ? "MANIFOLD_SURFACE_SHAPE_REPRESENTATION"
+                                            : "ADVANCED_BREP_SHAPE_REPRESENTATION";
+        WriteEntity(m_builder->BeginEntity(absrId, absrType)
             .AddString(compName)
             .AddEntityArray(absrItems)
             .AddEntityRef(m_geometricRepContextId)

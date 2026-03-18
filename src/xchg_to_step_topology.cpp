@@ -25,10 +25,34 @@
 int XchgToSTEPWriter::WriteBody(const Xchg_BodyPtr& body) {
     if (!body) return 0;
 
+    // 先检查是否是 Sheet Body（SHELL_BASED_SURFACE_MODEL）
+    // Sheet body 的几何存在 open shell 里，不在 lump 里
+    Xchg_Size_t numOpenShells = body->GetNumOpenShells();
+    if (numOpenShells > 0) {
+        // 收集所有 open shell
+        std::vector<int> shellIds;
+        for (Xchg_Size_t i = 0; i < numOpenShells; ++i) {
+            Xchg_ShellPtr openShell;
+            if (body->GetOpenShell(i, openShell) == XCHG_OK && openShell) {
+                int shellId = WriteShell(openShell, false);
+                if (shellId > 0) shellIds.push_back(shellId);
+            }
+        }
+        if (shellIds.empty()) return 0;
+
+        // SHELL_BASED_SURFACE_MODEL
+        int bodyId = m_mapper->AllocateNewId();
+        WriteEntity(m_builder->BeginEntity(bodyId, "SHELL_BASED_SURFACE_MODEL")
+            .AddString("")
+            .AddEntityArray(shellIds)
+            .Build());
+        return bodyId;
+    }
+
     // 获取 Lump 数量
     Xchg_Size_t numLumps = body->GetNumLumps();
     if (numLumps == 0) {
-        std::cerr << "[Warning] Body has no lumps" << std::endl;
+        std::cerr << "[Warning] Body has no lumps and no open shells, skipping" << std::endl;
         return 0;
     }
 
