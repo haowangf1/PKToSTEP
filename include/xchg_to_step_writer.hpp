@@ -5,6 +5,7 @@
 #include <ostream>
 #include <fstream>
 #include <vector>
+#include <unordered_map>
 
 // Forward declarations
 template<typename T>
@@ -218,4 +219,7 @@ private:
         double zx, zy, zz;       // Z direction
     };
     std::vector<AssemblyLinkRecord> m_assemblyLinks;
+
+    // 组件去重缓存：ComponentID -> {productDefId, shapeRepId}
+    std::unordered_map<unsigned int, ComponentIds> m_componentCache;
 };

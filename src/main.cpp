@@ -234,7 +234,7 @@ int main(int argc, char* argv[])
         step_path = argv[1];
         
     } else {
-        step_path = base + "resource/chip_FJ.step";
+        step_path = base + "resource/12148.step";
     }
 
     // Extract filename stem for output path

@@ -351,6 +351,11 @@ int XchgToSTEPWriter::WriteShapeDefinitionRepresentation(int productDefShapeId, 
 }
 
 // 从 Xchg_transfo 写出 AXIS2_PLACEMENT_3D，返回实体 ID
+//
+// amxt_stp 中 Compute_Transformation(trsf1, trsf2) 已修正为标准参数顺序
+// （原为 Compute_Transformation(trsf2, trsf1)，参数反了）。
+// 修正后 GetTransform() 存储的是标准正向变换（等价于 OCC Location），
+// 直接写出为 IDT(identity, placement) 即可。
 int XchgToSTEPWriter::WriteAxis2Placement3DFromTransfo(const Xchg_transfo& trsf) {
     const Xchg_pnt& o  = trsf.getOrigin();
     const Xchg_dir& xd = trsf.getXdir();
@@ -413,6 +418,13 @@ int XchgToSTEPWriter::WriteAssemblyLink(int parentSrId, int parentPdId,
 XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_ComponentPtr& comp) {
     ComponentIds result{0, 0};
     if (!comp) return result;
+
+    // 组件去重：同一个 Xchg_Component 原型只写出一次
+    unsigned int compId = comp->GetID();
+    auto cacheIt = m_componentCache.find(compId);
+    if (cacheIt != m_componentCache.end()) {
+        return cacheIt->second;
+    }
 
     // 产品名称
     std::string compName = comp->Name().c_str();
@@ -504,6 +516,9 @@ XchgToSTEPWriter::ComponentIds XchgToSTEPWriter::WriteComponent(const Xchg_Compo
 
     result.productDefId = productDefId;
     result.shapeRepId   = shapeRepId;
+
+    // 缓存该组件的写出结果，避免同一原型被重复写出
+    m_componentCache[compId] = result;
 
     // === 第四步：写 IDT + SRRWT + NAUO（复用已写好的子 placement）===
     for (auto& ci : childInfos) {
