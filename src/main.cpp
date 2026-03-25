@@ -13,6 +13,8 @@
 #include <cstdio>
 #include <string>
 #include <vector>
+#include <functional>
+#include <algorithm>
 
 // Dump MainDoc 装配树（打印父子关系和几何信息）
 // static void DumpComponent(const Xchg_ComponentPtr& comp, int depth)
@@ -60,47 +62,53 @@
 // }
 
 // ─────────────────────────────────────────────────────────────
-// Export_xt：递归收集 PK_BODY，考虑装配变换（原地变换到世界坐标）
-// 参考 amxt_stp/tests/debug/wzj.cpp 的实现逻辑
+// Export_xt：递归收集 PK_BODY，考虑多层装配变换累积（原地变换到世界坐标）
 // ─────────────────────────────────────────────────────────────
-static int g_xt_count = 0;
 static std::vector<PK_BODY_t> g_xt_bodies;
 
-static PK_ERROR_code_t SerializeNode_xt(
+static void CollectBodies_xt(
     const Xchg_ComponentPtr& comp,
-    PK_TRANSF_t transfer)  // -1 表示无变换
+    std::vector<PK_TRANSF_t>& trsf_stack)
 {
     // 处理当前 component 的所有 body node
     for (Xchg_Size_t i = 0; i < comp->GetNumNodes(); ++i) {
         auto nodePtr = comp->GetNodeByIndex(i);
         if (!nodePtr) continue;
 
-        PK_ERROR_code_t errCode = static_cast<PK_ERROR_code_t>(nodePtr->ConvertToPKBody());
-        if (errCode != PK_ERROR_no_errors) {
-            fprintf(stderr, "[Warn] Export_xt: ConvertToPKBody failed: %d\n", errCode);
-            continue;
-        }
-
         PK_BODY_t pk_body = static_cast<PK_BODY_t>(nodePtr->GetParasolidBody());
         if (!pk_body) continue;
 
-        // 应用装配变换（原地变换到世界坐标）
-        if (transfer != -1) {
-            PK_BODY_transform_o_t opts;
-            PK_BODY_transform_o_m(opts);
+        // 累积多层变换并应用
+        if (!trsf_stack.empty() && trsf_stack.front() != 0) {
+            // 从栈底到栈顶依次组合变换
+            PK_TRANSF_t combined = trsf_stack.back();
+
+            for (auto it = trsf_stack.rbegin() + 1; it != trsf_stack.rend(); ++it) {
+                PK_TRANSF_transform_o_t opts;
+                PK_TRANSF_transform_o_m(opts);
+                opts.modify = true;
+
+                PK_TRANSF_transform_r_t result;
+                if (auto err = PK_TRANSF_transform_2(combined, *it, &opts, &result);
+                    err != PK_ERROR_no_errors) {
+                    fprintf(stderr, "[Warn] Export_xt: PK_TRANSF_transform_2 failed: %d\n", err);
+                    continue;
+                }
+            }
+
+            PK_BODY_transform_o_t bopts;
+            PK_BODY_transform_o_m(bopts);
             PK_TOPOL_track_r_t trsftracking{};
             PK_TOPOL_local_r_t trsfresults{};
-            if (auto err = PK_BODY_transform_2(pk_body, transfer, 1e-10,
-                    &opts, &trsftracking, &trsfresults);
+            if (auto err = PK_BODY_transform_2(pk_body, combined, 1e-10,
+                    &bopts, &trsftracking, &trsfresults);
                 err != PK_ERROR_no_errors) {
                 fprintf(stderr, "[Warn] Export_xt: PK_BODY_transform_2 failed: %d\n", err);
             }
         }
 
-        // 去重后加入列表
         if (std::find(g_xt_bodies.begin(), g_xt_bodies.end(), pk_body) == g_xt_bodies.end())
             g_xt_bodies.push_back(pk_body);
-        ++g_xt_count;
     }
 
     // 递归处理子 component
@@ -109,10 +117,12 @@ static PK_ERROR_code_t SerializeNode_xt(
         if (!inst || !inst->GetComponent()) continue;
         PK_TRANSF_t trsf = 0;
         inst->GetKernelTransf(trsf);
-        SerializeNode_xt(inst->GetComponent(), trsf);
-    }
+        trsf_stack.push_back(trsf);
 
-    return PK_ERROR_no_errors;
+        CollectBodies_xt(inst->GetComponent(), trsf_stack);
+
+        trsf_stack.pop_back();
+    }
 }
 
 // 将 MainDoc（从 STEP 读入）转换为 PK_BODY 并导出 .x_t 文件
@@ -148,14 +158,30 @@ void Export_xt(Xchg_MainDocPtr* mainDoc, const std::string& input_step_path)
     }
 
     // 重置全局状态
-    g_xt_count = 0;
     g_xt_bodies.clear();
 
-    // 递归收集并变换所有 PK_BODY
-    SerializeNode_xt(root, -1);
+    // 先统一转换所有 node 的 PK_BODY
+    std::function<void(const Xchg_ComponentPtr&)> convertAll =
+        [&](const Xchg_ComponentPtr& comp) {
+        for (Xchg_Size_t i = 0; i < comp->GetNumNodes(); ++i) {
+            auto node = comp->GetNodeByIndex(i);
+            if (!node) continue;
+            if (auto err = node->ConvertToPKBody(); err != 0)
+                fprintf(stderr, "[Warn] Export_xt: ConvertToPKBody failed: %d\n", err);
+        }
+        for (Xchg_Size_t i = 0; i < comp->GetNumChildren(); ++i) {
+            auto inst = comp->GetChild(i);
+            if (inst && inst->GetComponent())
+                convertAll(inst->GetComponent());
+        }
+    };
+    convertAll(root);
 
-    printf("[Info] Export_xt: nodes=%d  unique bodies=%zu\n",
-           g_xt_count, g_xt_bodies.size());
+    // 递归收集并变换所有 PK_BODY（多层变换累积）
+    std::vector<PK_TRANSF_t> trsf_stack;
+    CollectBodies_xt(root, trsf_stack);
+
+    printf("[Info] Export_xt: unique bodies=%zu\n", g_xt_bodies.size());
 
     if (g_xt_bodies.empty()) {
         fprintf(stderr, "[Warn] Export_xt: no bodies to export\n");
@@ -234,7 +260,7 @@ int main(int argc, char* argv[])
         step_path = argv[1];
         
     } else {
-        step_path = base + "resource/12148.step";
+        step_path = base + "resource/as2-oc-214-mat.step";
     }
 
     // Extract filename stem for output path
